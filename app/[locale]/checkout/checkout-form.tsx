@@ -216,7 +216,7 @@ const CheckoutForm = ({ userEmail }: CheckoutFormProps) => {
                     phone: shippingAddress?.phone || "",
                   }}
                   onSuccess={() => handlePayWayOrder()}
-                  onError={(error) => {
+                  onError={(error: string) => {
                     toast({
                       title: "Payment Failed",
                       description: error,
@@ -685,7 +685,7 @@ const CheckoutForm = ({ userEmail }: CheckoutFormProps) => {
                           phone: shippingAddress?.phone || "",
                         }}
                         onSuccess={() => handlePayWayOrder()}
-                        onError={(error) => {
+                        onError={(error: string) => {
                           toast({
                             title: "Payment Failed",
                             description: error,

@@ -138,14 +138,14 @@ export default function OrderDetailsForm({
                     phone: shippingAddress.phone,
                   }}
                   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                  onSuccess={(transactionRef) => {
+                  onSuccess={(transactionRef: string) => {
                     toast({
                       title: "Payment Successful",
                       description: "Your order has been paid successfully!",
                     })
                     router.push(`/account/orders/${order._id}`)
                   }}
-                  onError={(error) => {
+                  onError={(error: string) => {
                     toast({
                       title: "Payment Failed",
                       description: error,
