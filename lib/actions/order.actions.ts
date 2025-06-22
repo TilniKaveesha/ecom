@@ -1,46 +1,39 @@
-'use server'
+"use server"
 
-import { Cart, IOrderList, OrderItem, ShippingAddress } from '@/types'
-import { formatError, round2 } from '../utils'
-import { connectToDatabase } from '../db'
-import { auth } from '@/auth'
-import { OrderInputSchema } from '../validator'
-import Order, { IOrder } from '../db/models/order.model'
-import { revalidatePath } from 'next/cache'
-import { sendAskReviewOrderItems, sendPurchaseReceipt } from '@/emails'
-import { paypal } from '../paypal'
-import{payway} from '../payway'
-import { DateRange } from 'react-day-picker'
-import Product from '../db/models/product.model'
-import User from '../db/models/user.model'
-import mongoose from 'mongoose'
-import { getSetting } from './setting.actions'
-
+import type { Cart, IOrderList, OrderItem, ShippingAddress } from "@/types"
+import { formatError, round2 } from "../utils"
+import { connectToDatabase } from "../db"
+import { auth } from "@/auth"
+import { OrderInputSchema } from "../validator"
+import Order, { type IOrder } from "../db/models/order.model"
+import { revalidatePath } from "next/cache"
+import { sendAskReviewOrderItems, sendPurchaseReceipt } from "@/emails"
+import { paypal } from "../paypal"
+import { payway } from "../payway"
+import type { DateRange } from "react-day-picker"
+import Product from "../db/models/product.model"
+import User from "../db/models/user.model"
+import mongoose from "mongoose"
+import { getSetting } from "./setting.actions"
 
 // CREATE
 export const createOrder = async (clientSideCart: Cart) => {
   try {
     await connectToDatabase()
     const session = await auth()
-    if (!session) throw new Error('User not authenticated')
+    if (!session) throw new Error("User not authenticated")
     // recalculate price and delivery date on the server
-    const createdOrder = await createOrderFromCart(
-      clientSideCart,
-      session.user.id!
-    )
+    const createdOrder = await createOrderFromCart(clientSideCart, session.user.id!)
     return {
       success: true,
-      message: 'Order placed successfully',
+      message: "Order placed successfully",
       data: { orderId: createdOrder._id.toString() },
     }
   } catch (error) {
     return { success: false, message: formatError(error) }
   }
 }
-export const createOrderFromCart = async (
-  clientSideCart: Cart,
-  userId: string
-) => {
+export const createOrderFromCart = async (clientSideCart: Cart, userId: string) => {
   const cart = {
     ...clientSideCart,
     ...calcDeliveryDateAndPrice({
@@ -69,17 +62,16 @@ export async function updateOrderToPaid(orderId: string) {
     await connectToDatabase()
     const order = await Order.findById(orderId).populate<{
       user: { email: string; name: string }
-    }>('user', 'name email')
-    if (!order) throw new Error('Order not found')
-    if (order.isPaid) throw new Error('Order is already paid')
+    }>("user", "name email")
+    if (!order) throw new Error("Order not found")
+    if (order.isPaid) throw new Error("Order is already paid")
     order.isPaid = true
     order.paidAt = new Date()
     await order.save()
-    if (!process.env.MONGODB_URI?.startsWith('mongodb://localhost'))
-      await updateProductStock(order._id)
+    if (!process.env.MONGODB_URI?.startsWith("mongodb://localhost")) await updateProductStock(order._id)
     if (order.user.email) await sendPurchaseReceipt({ order })
     revalidatePath(`/account/orders/${orderId}`)
-    return { success: true, message: 'Order paid successfully' }
+    return { success: true, message: "Order paid successfully" }
   } catch (err) {
     return { success: false, message: formatError(err) }
   }
@@ -91,23 +83,15 @@ const updateProductStock = async (orderId: string) => {
     session.startTransaction()
     const opts = { session }
 
-    const order = await Order.findOneAndUpdate(
-      { _id: orderId },
-      { isPaid: true, paidAt: new Date() },
-      opts
-    )
-    if (!order) throw new Error('Order not found')
+    const order = await Order.findOneAndUpdate({ _id: orderId }, { isPaid: true, paidAt: new Date() }, opts)
+    if (!order) throw new Error("Order not found")
 
     for (const item of order.items) {
       const product = await Product.findById(item.product).session(session)
-      if (!product) throw new Error('Product not found')
+      if (!product) throw new Error("Product not found")
 
       product.countInStock -= item.quantity
-      await Product.updateOne(
-        { _id: product._id },
-        { countInStock: product.countInStock },
-        opts
-      )
+      await Product.updateOne({ _id: product._id }, { countInStock: product.countInStock }, opts)
     }
     await session.commitTransaction()
     session.endSession()
@@ -123,15 +107,15 @@ export async function deliverOrder(orderId: string) {
     await connectToDatabase()
     const order = await Order.findById(orderId).populate<{
       user: { email: string; name: string }
-    }>('user', 'name email')
-    if (!order) throw new Error('Order not found')
-    if (!order.isPaid) throw new Error('Order is not paid')
+    }>("user", "name email")
+    if (!order) throw new Error("Order not found")
+    if (!order.isPaid) throw new Error("Order is not paid")
     order.isDelivered = true
     order.deliveredAt = new Date()
     await order.save()
     if (order.user.email) await sendAskReviewOrderItems({ order })
     revalidatePath(`/account/orders/${orderId}`)
-    return { success: true, message: 'Order delivered successfully' }
+    return { success: true, message: "Order delivered successfully" }
   } catch (err) {
     return { success: false, message: formatError(err) }
   }
@@ -142,11 +126,11 @@ export async function deleteOrder(id: string) {
   try {
     await connectToDatabase()
     const res = await Order.findByIdAndDelete(id)
-    if (!res) throw new Error('Order not found')
-    revalidatePath('/admin/orders')
+    if (!res) throw new Error("Order not found")
+    revalidatePath("/admin/orders")
     return {
       success: true,
-      message: 'Order deleted successfully',
+      message: "Order deleted successfully",
     }
   } catch (error) {
     return { success: false, message: formatError(error) }
@@ -168,11 +152,7 @@ export async function getAllOrders({
   limit = limit || pageSize
   await connectToDatabase()
   const skipAmount = (Number(page) - 1) * limit
-  const orders = await Order.find()
-    .populate('user', 'name')
-    .sort({ createdAt: 'desc' })
-    .skip(skipAmount)
-    .limit(limit)
+  const orders = await Order.find().populate("user", "name").sort({ createdAt: "desc" }).skip(skipAmount).limit(limit)
   const ordersCount = await Order.countDocuments()
   return {
     data: JSON.parse(JSON.stringify(orders)) as IOrderList[],
@@ -193,13 +173,13 @@ export async function getMyOrders({
   await connectToDatabase()
   const session = await auth()
   if (!session) {
-    throw new Error('User is not authenticated')
+    throw new Error("User is not authenticated")
   }
   const skipAmount = (Number(page) - 1) * limit
   const orders = await Order.find({
     user: session?.user?.id,
   })
-    .sort({ createdAt: 'desc' })
+    .sort({ createdAt: "desc" })
     .skip(skipAmount)
     .limit(limit)
   const ordersCount = await Order.countDocuments({ user: session?.user?.id })
@@ -223,55 +203,47 @@ export async function createPayPalOrder(orderId: string) {
       const paypalOrder = await paypal.createOrder(order.totalPrice)
       order.paymentResult = {
         id: paypalOrder.id,
-        email_address: '',
-        status: '',
-        pricePaid: '0',
+        email_address: "",
+        status: "",
+        pricePaid: "0",
       }
       await order.save()
       return {
         success: true,
-        message: 'PayPal order created successfully',
+        message: "PayPal order created successfully",
         data: paypalOrder.id,
       }
     } else {
-      throw new Error('Order not found')
+      throw new Error("Order not found")
     }
   } catch (err) {
     return { success: false, message: formatError(err) }
   }
 }
 
-export async function approvePayPalOrder(
-  orderId: string,
-  data: { orderID: string }
-) {
+export async function approvePayPalOrder(orderId: string, data: { orderID: string }) {
   await connectToDatabase()
   try {
-    const order = await Order.findById(orderId).populate('user', 'email')
-    if (!order) throw new Error('Order not found')
+    const order = await Order.findById(orderId).populate("user", "email")
+    if (!order) throw new Error("Order not found")
 
     const captureData = await paypal.capturePayment(data.orderID)
-    if (
-      !captureData ||
-      captureData.id !== order.paymentResult?.id ||
-      captureData.status !== 'COMPLETED'
-    )
-      throw new Error('Error in paypal payment')
+    if (!captureData || captureData.id !== order.paymentResult?.id || captureData.status !== "COMPLETED")
+      throw new Error("Error in paypal payment")
     order.isPaid = true
     order.paidAt = new Date()
     order.paymentResult = {
       id: captureData.id,
       status: captureData.status,
       email_address: captureData.payer.email_address,
-      pricePaid:
-        captureData.purchase_units[0]?.payments?.captures[0]?.amount?.value,
+      pricePaid: captureData.purchase_units[0]?.payments?.captures[0]?.amount?.value,
     }
     await order.save()
     await sendPurchaseReceipt({ order })
     revalidatePath(`/account/orders/${orderId}`)
     return {
       success: true,
-      message: 'Your order has been successfully paid by PayPal',
+      message: "Your order has been successfully paid by PayPal",
     }
   } catch (err) {
     return { success: false, message: formatError(err) }
@@ -292,18 +264,25 @@ export async function createPayWayOrder(orderId: string) {
 
       const paywayOrder = await payway.createOrder(order.totalPrice, orderId, customerInfo)
 
-      order.paymentResult = {
-        id: paywayOrder.transaction_ref,
-        email_address: customerInfo.email,
-        status: "pending",
-        pricePaid: "0",
-      }
-      await order.save()
+      if (paywayOrder.success) {
+        order.paymentResult = {
+          id: paywayOrder.transaction_ref,
+          email_address: customerInfo.email,
+          status: "pending",
+          pricePaid: "0",
+        }
+        await order.save()
 
-      return {
-        success: true,
-        message: "PayWay order created successfully",
-        data: paywayOrder.checkout_url,
+        return {
+          success: true,
+          message: "PayWay order created successfully",
+          data: {
+            checkoutHtml: paywayOrder.checkout_html,
+            transactionRef: paywayOrder.transaction_ref,
+          },
+        }
+      } else {
+        throw new Error("Failed to create PayWay order")
       }
     } else {
       throw new Error("Order not found")
@@ -313,22 +292,23 @@ export async function createPayWayOrder(orderId: string) {
   }
 }
 
-export async function verifyPayWayPayment(orderId: string, transactionRef: string) {
+export async function verifyPayWayPayment(orderId: string, tran_id: string) {
   await connectToDatabase()
   try {
     const order = await Order.findById(orderId).populate("user", "email")
     if (!order) throw new Error("Order not found")
 
-    const paymentData = await payway.verifyPayment(transactionRef)
+    const paymentData = await payway.getTransactionDetails(tran_id)
 
-    if (paymentData.status === "completed") {
+    if (paymentData.status === "0") {
+      // Status "0" means successful in PayWay
       order.isPaid = true
       order.paidAt = new Date()
       order.paymentResult = {
-        id: paymentData.transaction_ref,
-        status: paymentData.status,
-        email_address: paymentData.customer_email,
-        pricePaid: (paymentData.amount / 100).toString(),
+        id: paymentData.tran_id,
+        status: "completed",
+        email_address: paymentData.email || order.paymentResult?.email_address || "",
+        pricePaid: paymentData.amount?.toString() || "0",
       }
       await order.save()
       await sendPurchaseReceipt({ order })
@@ -346,7 +326,6 @@ export async function verifyPayWayPayment(orderId: string, transactionRef: strin
   }
 }
 
-
 export const calcDeliveryDateAndPrice = async ({
   items,
   shippingAddress,
@@ -357,36 +336,24 @@ export const calcDeliveryDateAndPrice = async ({
   shippingAddress?: ShippingAddress
 }) => {
   const { availableDeliveryDates } = await getSetting()
-  const itemsPrice = round2(
-    items.reduce((acc, item) => acc + item.price * item.quantity, 0)
-  )
+  const itemsPrice = round2(items.reduce((acc, item) => acc + item.price * item.quantity, 0))
 
   const deliveryDate =
-    availableDeliveryDates[
-      deliveryDateIndex === undefined
-        ? availableDeliveryDates.length - 1
-        : deliveryDateIndex
-    ]
+    availableDeliveryDates[deliveryDateIndex === undefined ? availableDeliveryDates.length - 1 : deliveryDateIndex]
   const shippingPrice =
     !shippingAddress || !deliveryDate
       ? undefined
-      : deliveryDate.freeShippingMinPrice > 0 &&
-          itemsPrice >= deliveryDate.freeShippingMinPrice
+      : deliveryDate.freeShippingMinPrice > 0 && itemsPrice >= deliveryDate.freeShippingMinPrice
         ? 0
         : deliveryDate.shippingPrice
 
   const taxPrice = !shippingAddress ? undefined : round2(itemsPrice * 0.15)
   const totalPrice = round2(
-    itemsPrice +
-      (shippingPrice ? round2(shippingPrice) : 0) +
-      (taxPrice ? round2(taxPrice) : 0)
+    itemsPrice + (shippingPrice ? round2(shippingPrice) : 0) + (taxPrice ? round2(taxPrice) : 0),
   )
   return {
     availableDeliveryDates,
-    deliveryDateIndex:
-      deliveryDateIndex === undefined
-        ? availableDeliveryDates.length - 1
-        : deliveryDateIndex,
+    deliveryDateIndex: deliveryDateIndex === undefined ? availableDeliveryDates.length - 1 : deliveryDateIndex,
     itemsPrice,
     shippingPrice,
     taxPrice,
@@ -429,19 +396,15 @@ export async function getOrderSummary(date: DateRange) {
     {
       $group: {
         _id: null,
-        sales: { $sum: '$totalPrice' },
+        sales: { $sum: "$totalPrice" },
       },
     },
-    { $project: { totalSales: { $ifNull: ['$sales', 0] } } },
+    { $project: { totalSales: { $ifNull: ["$sales", 0] } } },
   ])
   const totalSales = totalSalesResult[0] ? totalSalesResult[0].totalSales : 0
 
   const today = new Date()
-  const sixMonthEarlierDate = new Date(
-    today.getFullYear(),
-    today.getMonth() - 5,
-    1
-  )
+  const sixMonthEarlierDate = new Date(today.getFullYear(), today.getMonth() - 5, 1)
   const monthlySales = await Order.aggregate([
     {
       $match: {
@@ -452,15 +415,15 @@ export async function getOrderSummary(date: DateRange) {
     },
     {
       $group: {
-        _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
-        totalSales: { $sum: '$totalPrice' },
+        _id: { $dateToString: { format: "%Y-%m", date: "$createdAt" } },
+        totalSales: { $sum: "$totalPrice" },
       },
     },
     {
       $project: {
         _id: 0,
-        label: '$_id',
-        value: '$totalSales',
+        label: "$_id",
+        value: "$totalSales",
       },
     },
 
@@ -473,10 +436,7 @@ export async function getOrderSummary(date: DateRange) {
     common: { pageSize },
   } = await getSetting()
   const limit = pageSize
-  const latestOrders = await Order.find()
-    .populate('user', 'name')
-    .sort({ createdAt: 'desc' })
-    .limit(limit)
+  const latestOrders = await Order.find().populate("user", "name").sort({ createdAt: "desc" }).limit(limit)
   return {
     ordersCount,
     productsCount,
@@ -503,24 +463,18 @@ async function getSalesChartData(date: DateRange) {
     {
       $group: {
         _id: {
-          year: { $year: '$createdAt' },
-          month: { $month: '$createdAt' },
-          day: { $dayOfMonth: '$createdAt' },
+          year: { $year: "$createdAt" },
+          month: { $month: "$createdAt" },
+          day: { $dayOfMonth: "$createdAt" },
         },
-        totalSales: { $sum: '$totalPrice' },
+        totalSales: { $sum: "$totalPrice" },
       },
     },
     {
       $project: {
         _id: 0,
         date: {
-          $concat: [
-            { $toString: '$_id.year' },
-            '/',
-            { $toString: '$_id.month' },
-            '/',
-            { $toString: '$_id.day' },
-          ],
+          $concat: [{ $toString: "$_id.year" }, "/", { $toString: "$_id.month" }, "/", { $toString: "$_id.day" }],
         },
         totalSales: 1,
       },
@@ -542,18 +496,18 @@ async function getTopSalesProducts(date: DateRange) {
       },
     },
     // Step 1: Unwind orderItems array
-    { $unwind: '$items' },
+    { $unwind: "$items" },
 
     // Step 2: Group by productId to calculate total sales per product
     {
       $group: {
         _id: {
-          name: '$items.name',
-          image: '$items.image',
-          _id: '$items.product',
+          name: "$items.name",
+          image: "$items.image",
+          _id: "$items.product",
         },
         totalSales: {
-          $sum: { $multiply: ['$items.quantity', '$items.price'] },
+          $sum: { $multiply: ["$items.quantity", "$items.price"] },
         }, // Assume quantity field in orderItems represents units sold
       },
     },
@@ -568,10 +522,10 @@ async function getTopSalesProducts(date: DateRange) {
     {
       $project: {
         _id: 0,
-        id: '$_id._id',
-        label: '$_id.name',
-        image: '$_id.image',
-        value: '$totalSales',
+        id: "$_id._id",
+        label: "$_id.name",
+        image: "$_id.image",
+        value: "$totalSales",
       },
     },
 
@@ -593,12 +547,12 @@ async function getTopSalesCategories(date: DateRange, limit = 5) {
       },
     },
     // Step 1: Unwind orderItems array
-    { $unwind: '$items' },
+    { $unwind: "$items" },
     // Step 2: Group by productId to calculate total sales per product
     {
       $group: {
-        _id: '$items.category',
-        totalSales: { $sum: '$items.quantity' }, // Assume quantity field in orderItems represents units sold
+        _id: "$items.category",
+        totalSales: { $sum: "$items.quantity" }, // Assume quantity field in orderItems represents units sold
       },
     },
     // Step 3: Sort by totalSales in descending order

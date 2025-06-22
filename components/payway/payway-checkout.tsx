@@ -33,6 +33,7 @@ export default function PayWayCheckout({
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentStatus, setPaymentStatus] = useState<"idle" | "processing" | "success" | "error">("idle")
   const { toast } = useToast()
+  const [checkoutHtml, setCheckoutHtml] = useState<string>("")
 
   const handlePayWayCheckout = async () => {
     setIsProcessing(true)
@@ -56,8 +57,8 @@ export default function PayWayCheckout({
 
       if (data.success) {
         onSuccess?.(data.transactionRef)
-        // Redirect to PayWay checkout page
-        window.location.href = data.checkoutUrl
+        setCheckoutHtml(data.checkoutHtml)
+        setPaymentStatus("success")
       } else {
         throw new Error(data.error || "Failed to create checkout session")
       }
@@ -198,6 +199,17 @@ export default function PayWayCheckout({
           By proceeding, you agree to PayWay Cambodia&apos;s terms of service and privacy policy.
         </p>
       </CardContent>
+      {/* PayWay Checkout HTML */}
+      {checkoutHtml && (
+        <div className="mt-4">
+          <iframe
+            srcDoc={checkoutHtml}
+            className="w-full h-96 border rounded-lg"
+            title="PayWay Checkout"
+            sandbox="allow-scripts allow-forms allow-same-origin allow-top-navigation"
+          />
+        </div>
+      )}
     </Card>
   )
 }

@@ -32,14 +32,14 @@ export async function POST(request: NextRequest) {
     // Create PayWay checkout session
     const paywayResponse = await payway.createOrder(amount, orderId, customerInfo)
 
-    if (paywayResponse.checkout_url) {
+    if (paywayResponse.success) {
       return NextResponse.json({
         success: true,
-        checkoutUrl: paywayResponse.checkout_url,
+        checkoutHtml: paywayResponse.checkout_html,
         transactionRef: paywayResponse.transaction_ref,
       })
     } else {
-      throw new Error(paywayResponse.message || "Failed to create checkout session")
+      throw new Error("Failed to create checkout session")
     }
   } catch (error) {
     console.error("PayWay checkout creation error:", error)

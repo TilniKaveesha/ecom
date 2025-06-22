@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-non-null-asserted-optional-chain */
 "use client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
@@ -24,7 +23,6 @@ import useCartStore from "@/hooks/use-cart-store"
 import useSettingStore from "@/hooks/use-setting-store"
 import ProductPrice from "@/components/shared/product/product-price"
 import PayWayCheckout from "@/components/payway/payway-checkout"
-import { createPayWayOrder } from "@/lib/actions/order.actions"
 
 const shippingAddressDefaultValues =
   process.env.NODE_ENV === "development"
@@ -141,7 +139,7 @@ const CheckoutForm = ({ userEmail }: CheckoutFormProps) => {
     setIsPayWayProcessing(true)
 
     try {
-      // First create the order
+      // Create the order with PayWay payment method
       const orderRes = await createOrder({
         items,
         shippingAddress,
@@ -158,23 +156,17 @@ const CheckoutForm = ({ userEmail }: CheckoutFormProps) => {
         throw new Error(orderRes.message)
       }
 
-      // Then create PayWay checkout session
-      const paywayRes = await createPayWayOrder(orderRes.data?.orderId!)
-
-      if (!paywayRes.success) {
-        throw new Error(paywayRes.message)
-      }
-
-      // Clear cart and redirect to PayWay
+      // Clear cart and redirect to payment page
       clearCart()
-      window.location.href = paywayRes.data
+      router.push(`/checkout/${orderRes.data?.orderId}`)
     } catch (error) {
       toast({
-        description: error instanceof Error ? error.message : "Payment processing failed",
+        description: error instanceof Error ? error.message : "Order creation failed",
         variant: "destructive",
       })
     } finally {
       setIsPayWayProcessing(false)
+      setShowPayWayCheckout(false)
     }
   }
 
@@ -223,7 +215,7 @@ const CheckoutForm = ({ userEmail }: CheckoutFormProps) => {
                     email: userEmail || "customer@example.com",
                     phone: shippingAddress?.phone || "",
                   }}
-                  onSuccess={handlePayWayOrder}
+                  onSuccess={() => handlePayWayOrder()}
                   onError={(error) => {
                     toast({
                       title: "Payment Failed",
@@ -692,7 +684,7 @@ const CheckoutForm = ({ userEmail }: CheckoutFormProps) => {
                           email: userEmail || "customer@example.com",
                           phone: shippingAddress?.phone || "",
                         }}
-                        onSuccess={handlePayWayOrder}
+                        onSuccess={() => handlePayWayOrder()}
                         onError={(error) => {
                           toast({
                             title: "Payment Failed",
