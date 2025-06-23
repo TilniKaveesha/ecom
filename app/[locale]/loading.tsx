@@ -1,50 +1,86 @@
-import { getTranslations } from 'next-intl/server'
+import { getTranslations } from "next-intl/server"
 
 export default async function LoadingPage() {
   const t = await getTranslations()
+
   return (
-    <div className='flex flex-col items-center justify-center min-h-screen bg-gray-50'>
-      <div className='p-8 rounded-xl shadow-lg w-full max-w-md bg-white text-center border border-gray-100'>
-        <div className='flex justify-center mb-6'>
-          {/* Animated shopping bag icon */}
-          <div className='relative w-16 h-16'>
-            <div className='absolute inset-0 bg-blue-100 rounded-full animate-pulse'></div>
-            <svg 
-              className='absolute inset-0 m-auto text-blue-600' 
-              xmlns="http://www.w3.org/2000/svg" 
-              width="24" 
-              height="24" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2" 
-              strokeLinecap="round" 
-              strokeLinejoin="round"
-            >
-              <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
-              <line x1="3" y1="6" x2="21" y2="6"></line>
-              <path d="M16 10a4 4 0 0 1-8 0"></path>
-            </svg>
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-br from-background via-background/95 to-muted/20">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 opacity-5">
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `radial-gradient(circle at 25% 25%, hsl(var(--primary)) 0%, transparent 50%), 
+                           radial-gradient(circle at 75% 75%, hsl(var(--primary)) 0%, transparent 50%)`,
+          }}
+        />
+      </div>
+
+      {/* Main Loading Container */}
+      <div className="relative flex flex-col items-center justify-center p-8 rounded-2xl bg-card/80 backdrop-blur-sm border shadow-2xl max-w-md w-full mx-4">
+        {/* Animated Logo/Icon */}
+        <div className="relative mb-8">
+          {/* Outer Ring */}
+          <div
+            className="absolute inset-0 w-20 h-20 rounded-full border-4 border-primary/20 animate-spin"
+            style={{ animationDuration: "3s" }}
+          />
+
+          {/* Inner Ring */}
+          <div
+            className="absolute inset-2 w-16 h-16 rounded-full border-4 border-primary/40 animate-spin"
+            style={{ animationDuration: "2s", animationDirection: "reverse" }}
+          />
+
+          {/* Center Icon */}
+          <div className="relative w-20 h-20 flex items-center justify-center">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center animate-pulse">
+              <svg className="w-5 h-5 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+                />
+              </svg>
+            </div>
           </div>
         </div>
-        
-        <h3 className='text-lg font-medium text-gray-800 mb-2'>
-          {t('Loading.Loading')}
-        </h3>
-        <p className='text-gray-500 mb-6'>
-          Preparing your shopping experience...
-        </p>
-        
-        {/* Animated loading bar */}
-        <div className='w-full bg-gray-200 rounded-full h-2.5'>
-          <div className='bg-blue-600 h-2.5 rounded-full animate-pulse' style={{width: '45%'}}></div>
+
+        {/* Loading Text */}
+        <div className="text-center mb-6">
+          <h2 className="text-2xl font-bold text-foreground mb-2 animate-fade-in">{t("Loading.Loading")}</h2>
+          <p className="text-muted-foreground animate-fade-in-delay">Preparing your shopping experience...</p>
         </div>
-        
-        {/* Fixed fallback text without using t() */}
-        <div className='mt-6 text-sm text-gray-400 animate-pulse'>
-          Please wait...
+
+        {/* Progress Bar */}
+        <div className="w-full mb-6">
+          <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-primary to-primary/80 rounded-full animate-loading-bar" />
+          </div>
+        </div>
+
+        {/* Loading Steps */}
+        <div className="flex flex-col space-y-2 text-sm text-muted-foreground w-full">
+          <div className="flex items-center space-x-3 animate-step-1">
+            <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+            <span>Loading products...</span>
+          </div>
+          <div className="flex items-center space-x-3 animate-step-2">
+            <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: "0.5s" }} />
+            <span>Setting up cart...</span>
+          </div>
+          <div className="flex items-center space-x-3 animate-step-3">
+            <div className="w-2 h-2 bg-primary/40 rounded-full animate-pulse" style={{ animationDelay: "1s" }} />
+            <span>Finalizing...</span>
+          </div>
         </div>
       </div>
+
+      {/* Floating Elements */}
+      <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-primary/30 rounded-full animate-float-1" />
+      <div className="absolute top-1/3 right-1/4 w-3 h-3 bg-primary/20 rounded-full animate-float-2" />
+      <div className="absolute bottom-1/4 left-1/3 w-1.5 h-1.5 bg-primary/25 rounded-full animate-float-3" />
     </div>
   )
 }

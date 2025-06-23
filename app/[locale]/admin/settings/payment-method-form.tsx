@@ -1,24 +1,14 @@
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { ISettingInput } from '@/types'
-import { TrashIcon } from 'lucide-react'
-import React, { useEffect } from 'react'
-import { useFieldArray, UseFormReturn } from 'react-hook-form'
+"use client"
+
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import type { ISettingInput } from "@/types"
+import { TrashIcon } from "lucide-react"
+import { useEffect } from "react"
+import { useFieldArray, type UseFormReturn } from "react-hook-form"
 
 export default function PaymentMethodForm({
   form,
@@ -29,7 +19,7 @@ export default function PaymentMethodForm({
 }) {
   const { fields, append, remove } = useFieldArray({
     control: form.control,
-    name: 'availablePaymentMethods',
+    name: "availablePaymentMethods",
   })
   const {
     setValue,
@@ -38,13 +28,13 @@ export default function PaymentMethodForm({
     formState: { errors },
   } = form
 
-  const availablePaymentMethods = watch('availablePaymentMethods')
-  const defaultPaymentMethod = watch('defaultPaymentMethod')
+  const availablePaymentMethods = watch("availablePaymentMethods")
+  const defaultPaymentMethod = watch("defaultPaymentMethod")
 
   useEffect(() => {
     const validCodes = availablePaymentMethods.map((lang) => lang.name)
     if (!validCodes.includes(defaultPaymentMethod)) {
-      setValue('defaultPaymentMethod', '')
+      setValue("defaultPaymentMethod", "")
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(availablePaymentMethods)])
@@ -54,22 +44,20 @@ export default function PaymentMethodForm({
       <CardHeader>
         <CardTitle>Payment Methods</CardTitle>
       </CardHeader>
-      <CardContent className='space-y-4'>
-        <div className='space-y-4'>
+      <CardContent className="space-y-4">
+        <div className="space-y-4">
           {fields.map((field, index) => (
-            <div key={field.id} className='flex   gap-2'>
+            <div key={field.id} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
               <FormField
                 control={form.control}
                 name={`availablePaymentMethods.${index}.name`}
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="md:col-span-1">
                     {index == 0 && <FormLabel>Name</FormLabel>}
                     <FormControl>
-                      <Input {...field} placeholder='Name' />
+                      <Input {...field} placeholder="Name" />
                     </FormControl>
-                    <FormMessage>
-                      {errors.availablePaymentMethods?.[index]?.name?.message}
-                    </FormMessage>
+                    <FormMessage>{errors.availablePaymentMethods?.[index]?.name?.message}</FormMessage>
                   </FormItem>
                 )}
               />
@@ -77,59 +65,47 @@ export default function PaymentMethodForm({
                 control={form.control}
                 name={`availablePaymentMethods.${index}.commission`}
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="md:col-span-1">
                     {index == 0 && <FormLabel>Commission</FormLabel>}
                     <FormControl>
-                      <Input {...field} placeholder='Commission' />
+                      <Input type="number" min="0" step="0.01" {...field} placeholder="Commission" />
                     </FormControl>
-                    <FormMessage>
-                      {
-                        errors.availablePaymentMethods?.[index]?.commission
-                          ?.message
-                      }
-                    </FormMessage>
+                    <FormMessage>{errors.availablePaymentMethods?.[index]?.commission?.message}</FormMessage>
                   </FormItem>
                 )}
               />
-              <div>
+              <div className="md:col-span-1">
                 {index == 0 && <div>Action</div>}
                 <Button
-                  type='button'
+                  type="button"
                   disabled={fields.length === 1}
-                  variant='outline'
-                  className={index == 0 ? 'mt-2' : ''}
+                  variant="outline"
+                  className={index == 0 ? "mt-2" : ""}
                   onClick={() => {
                     remove(index)
                   }}
                 >
-                  <TrashIcon className='w-4 h-4' />
+                  <TrashIcon className="w-4 h-4" />
                 </Button>
               </div>
             </div>
           ))}
 
-          <Button
-            type='button'
-            variant={'outline'}
-            onClick={() => append({ name: '', commission: 0 })}
-          >
+          <Button type="button" variant={"outline"} onClick={() => append({ name: "", commission: 0 })}>
             Add PaymentMethod
           </Button>
         </div>
 
         <FormField
           control={control}
-          name='defaultPaymentMethod'
+          name="defaultPaymentMethod"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Default PaymentMethod</FormLabel>
               <FormControl>
-                <Select
-                  value={field.value || ''}
-                  onValueChange={(value) => field.onChange(value)}
-                >
+                <Select value={field.value || ""} onValueChange={(value) => field.onChange(value)}>
                   <SelectTrigger>
-                    <SelectValue placeholder='Select a payment method' />
+                    <SelectValue placeholder="Select a payment method" />
                   </SelectTrigger>
                   <SelectContent>
                     {availablePaymentMethods

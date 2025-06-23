@@ -1,19 +1,11 @@
-'use client'
-import { Button } from '@/components/ui/button'
-import {
-  CreditCard,
-  Currency,
-  ImageIcon,
-  Info,
-  Languages,
-  Package,
-  SettingsIcon,
-} from 'lucide-react'
+"use client"
+import { Button } from "@/components/ui/button"
+import { CreditCard, Currency, ImageIcon, Info, Languages, Package, SettingsIcon } from "lucide-react"
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from "react"
 
 const SettingNav = () => {
-  const [active, setActive] = useState('')
+  const [active, setActive] = useState("")
 
   useEffect(() => {
     const sections = document.querySelectorAll('div[id^="setting-"]')
@@ -26,7 +18,7 @@ const SettingNav = () => {
           }
         })
       },
-      { threshold: 0.6, rootMargin: '0px 0px -40% 0px' }
+      { threshold: 0.6, rootMargin: "0px 0px -40% 0px" },
     )
     sections.forEach((section) => observer.observe(section))
     return () => observer.disconnect()
@@ -35,50 +27,49 @@ const SettingNav = () => {
     const section = document.getElementById(id)
     if (section) {
       const top = section.offsetTop - 16 // 20px above the section
-      window.scrollTo({ top, behavior: 'smooth' })
+      window.scrollTo({ top, behavior: "smooth" })
     }
   }
 
   return (
     <div>
-      <h1 className='h1-bold'>Setting</h1>
-      <nav className='flex md:flex-col gap-2 md:fixed mt-4 flex-wrap'>
+      <h1 className="h1-bold">Setting</h1>
+      <nav className="flex md:flex-col gap-2 md:sticky md:top-4 mt-4 flex-wrap max-h-screen overflow-y-auto">
         {[
-          { name: 'Site Info', hash: 'setting-site-info', icon: <Info /> },
+          { name: "Site Info", hash: "setting-site-info", icon: <Info /> },
           {
-            name: 'Common Settings',
-            hash: 'setting-common',
+            name: "Common Settings",
+            hash: "setting-common",
             icon: <SettingsIcon />,
           },
           {
-            name: 'Carousels',
-            hash: 'setting-carousels',
+            name: "Carousels",
+            hash: "setting-carousels",
             icon: <ImageIcon />,
           },
-          { name: 'Languages', hash: 'setting-languages', icon: <Languages /> },
+          { name: "Languages", hash: "setting-languages", icon: <Languages /> },
           {
-            name: 'Currencies',
-            hash: 'setting-currencies',
+            name: "Currencies",
+            hash: "setting-currencies",
             icon: <Currency />,
           },
           {
-            name: 'Payment Methods',
-            hash: 'setting-payment-methods',
+            name: "Payment Methods",
+            hash: "setting-payment-methods",
             icon: <CreditCard />,
           },
           {
-            name: 'Delivery Dates',
-            hash: 'setting-delivery-dates',
+            name: "Delivery Dates",
+            hash: "setting-delivery-dates",
             icon: <Package />,
           },
         ].map((item) => (
           <Button
             onClick={() => handleScroll(item.hash)}
             key={item.hash}
-            variant={active === item.hash ? 'outline' : 'ghost'}
-            className={`justify-start ${
-              active === item.hash ? '' : 'border border-transparent'
-            }`}
+            variant={active === item.hash ? "outline" : "ghost"}
+            className={`justify-start ${active === item.hash ? "" : "border border-transparent"}`}
+            size="sm"
           >
             {item.icon}
             {item.name}
