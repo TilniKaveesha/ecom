@@ -12,5 +12,5 @@ export default async function CheckoutPage() {
   if (!session?.user) {
     redirect('/sign-in?callbackUrl=/checkout')
   }
-  return <CheckoutForm />
+  return <CheckoutForm userEmail={session.user.email||''} />
 }
