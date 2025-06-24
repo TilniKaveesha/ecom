@@ -31,25 +31,29 @@ export default async function SignInPage(props: {
   }
 
   return (
-    <div className='w-full'>
+    <div className="w-full px-4 py-6 max-w-md mx-auto relative z-10 pointer-events-auto">
       <Card>
         <CardHeader>
-          <CardTitle className='text-2xl'>Sign In</CardTitle>
+          <CardTitle className="text-2xl">Sign In</CardTitle>
         </CardHeader>
+
         <CardContent>
-          <div>
+          <div className="space-y-6">
             <CredentialsSignInForm />
             <SeparatorWithOr />
-            <div className='mt-4'>
+            <div className="mt-4">
               <GoogleSignInForm />
             </div>
           </div>
         </CardContent>
       </Card>
-      <SeparatorWithOr>New to {site.name}?</SeparatorWithOr>
+
+      <div className="my-6">
+        <SeparatorWithOr>New to {site.name}?</SeparatorWithOr>
+      </div>
 
       <Link href={`/sign-up?callbackUrl=${encodeURIComponent(callbackUrl)}`}>
-        <Button className='w-full' variant='outline'>
+        <Button className="w-full" variant="outline">
           Create your {site.name} account
         </Button>
       </Link>
