@@ -15,19 +15,39 @@ interface CheckoutRequest {
 export async function POST(request: NextRequest) {
   try {
     const body: CheckoutRequest = await request.json()
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { orderId, amount, currency, customerInfo } = body
+    const { orderId, amount, customerInfo } = body
 
     // Validate required fields
     if (!orderId || !amount || !customerInfo.email) {
       return NextResponse.json(
         {
           success: false,
-          error: "Missing required fields",
+          error: "Missing required fields: orderId, amount, and customerInfo.email are required",
         },
         { status: 400 },
       )
     }
+
+    // Validate amount
+    if (amount <= 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Amount must be greater than 0",
+        },
+        { status: 400 },
+      )
+    }
+
+    console.log("Creating PayWay checkout for:", {
+      orderId,
+      amount,
+      customerInfo: {
+        name: customerInfo.name,
+        email: customerInfo.email,
+        phone: customerInfo.phone || "N/A",
+      },
+    })
 
     // Create PayWay checkout session
     const paywayResponse = await payway.createOrder(amount, orderId, customerInfo)
@@ -36,10 +56,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         checkoutHtml: paywayResponse.checkout_html,
+        checkoutUrl: paywayResponse.checkout_url,
         transactionRef: paywayResponse.transaction_ref,
+        qrString: paywayResponse.qr_string,
+        abapayDeeplink: paywayResponse.abapay_deeplink,
       })
     } else {
-      throw new Error("Failed to create checkout session")
+      throw new Error("Failed to create PayWay checkout session")
     }
   } catch (error) {
     console.error("PayWay checkout creation error:", error)

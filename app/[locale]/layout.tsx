@@ -58,7 +58,7 @@ export default async function AppLayout({
       suppressHydrationWarning
     >
       <body
-        className={`min-h-screen ${inter.variable} antialiased`}
+        className={`min-h-screen pointer-events-auto ${inter.variable} antialiased`}
       >
         <NextIntlClientProvider locale={locale} messages={messages}>
           <ClientProviders setting={{ ...setting, currency }}>
