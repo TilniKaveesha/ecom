@@ -326,6 +326,65 @@ export async function verifyPayWayPayment(orderId: string, tran_id: string) {
   }
 }
 
+export async function createPayWayPaymentLink(orderId: string) {
+  await connectToDatabase()
+  try {
+    const order = await Order.findById(orderId).populate("user", "name email")
+    if (!order) throw new Error("Order not found")
+
+    if (order.isPaid) throw new Error("Order is already paid")
+
+    const customerInfo = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      email: (order.user as any).email,
+      phone: order.shippingAddress.phone,
+      name: order.shippingAddress.fullName,
+    }
+
+    // Use the payment link API directly
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/api/payway/payment-link/create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        orderId: orderId,
+        amount: order.totalPrice,
+        currency: "USD",
+        customerInfo: customerInfo,
+        title: `Payment for Order #${orderId}`,
+        description: `Payment for order ${orderId}`,
+      }),
+    })
+
+    const result = await response.json()
+
+    if (result.success) {
+      // Store payment link info in order
+      order.paymentResult = {
+        id: result.data.payment_link_id,
+        email_address: customerInfo.email,
+        status: "pending",
+        pricePaid: "0",
+      }
+      await order.save()
+
+      return {
+        success: true,
+        message: "Payment link created successfully",
+        data: {
+          paymentLink: result.data.payment_link,
+          paymentLinkId: result.data.payment_link_id,
+        },
+      }
+    } else {
+      throw new Error(result.message || "Failed to create PayWay payment link")
+    }
+  } catch (err) {
+    return { success: false, message: formatError(err) }
+  }
+}
+
 export const calcDeliveryDateAndPrice = async ({
   items,
   shippingAddress,

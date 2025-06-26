@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { PayPalButtons, PayPalScriptProvider, usePayPalScriptReducer } from "@paypal/react-paypal-js"
@@ -15,6 +16,7 @@ import StripeForm from "./stripe-form"
 import { Elements } from "@stripe/react-stripe-js"
 import { loadStripe } from "@stripe/stripe-js"
 import PayWayCheckout from "@/components/payway/payway-checkout"
+import PaymentLinkOption from "./payment-link-option"
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string)
 export default function OrderDetailsForm({
@@ -108,6 +110,34 @@ export default function OrderDetailsForm({
               </span>
             </div>
 
+            {!isPaid && paymentMethod === "PayWay Payment Link" && (
+  <div className="pt-4">
+    <PaymentLinkOption
+      orderId={order._id}
+      amount={totalPrice}
+      customerInfo={{
+        name: shippingAddress.fullName,
+        email: (order.user as any).email || "customer@example.com",
+        phone: shippingAddress.phone,
+      }}
+      onSuccess={() => {
+        toast({
+          title: "Payment Link Created",
+          description: "Share the payment link with your customer",
+        })
+      }}
+      onError={(error: string) => {
+        toast({
+          title: "Failed to Create Payment Link",
+          description: error,
+          variant: "destructive",
+        })
+      }}
+    />
+  </div>
+)}
+            
+
             {!isPaid && paymentMethod === "PayPal" && (
               <div>
                 <PayPalScriptProvider options={{ clientId: paypalClientId }}>
@@ -133,7 +163,7 @@ export default function OrderDetailsForm({
                   amount={totalPrice}
                   customerInfo={{
                     name: shippingAddress.fullName,
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
                     email: (order.user as any).email || "customer@example.com",
                     phone: shippingAddress.phone,
                   }}

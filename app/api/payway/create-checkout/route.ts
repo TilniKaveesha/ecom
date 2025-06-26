@@ -5,6 +5,7 @@ interface CheckoutRequest {
   orderId: string
   amount: number
   currency: string
+  paymentOption?: string // Add payment option
   customerInfo: {
     name: string
     email: string
@@ -15,7 +16,7 @@ interface CheckoutRequest {
 export async function POST(request: NextRequest) {
   try {
     const body: CheckoutRequest = await request.json()
-    const { orderId, amount, customerInfo } = body
+    const { orderId, amount, customerInfo, paymentOption = "" } = body
 
     // Validate required fields
     if (!orderId || !amount || !customerInfo.email) {
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest) {
     console.log("Creating PayWay checkout for:", {
       orderId,
       amount,
+      paymentOption: paymentOption || "all_methods",
       customerInfo: {
         name: customerInfo.name,
         email: customerInfo.email,
@@ -50,16 +52,18 @@ export async function POST(request: NextRequest) {
     })
 
     // Create PayWay checkout session
-    const paywayResponse = await payway.createOrder(amount, orderId, customerInfo)
+    const paywayResponse = await payway.createOrder(amount, orderId, customerInfo, paymentOption)
 
     if (paywayResponse.success) {
       return NextResponse.json({
         success: true,
+        responseType: paywayResponse.response_type,
         checkoutHtml: paywayResponse.checkout_html,
         checkoutUrl: paywayResponse.checkout_url,
         transactionRef: paywayResponse.transaction_ref,
         qrString: paywayResponse.qr_string,
         abapayDeeplink: paywayResponse.abapay_deeplink,
+        status: paywayResponse.status,
       })
     } else {
       throw new Error("Failed to create PayWay checkout session")
