@@ -1,7 +1,8 @@
-import type React from "react"
+import type { ReactNode } from "react"
 import type { Metadata } from "next"
-import Link from "next/link"
 import { notFound } from "next/navigation"
+import Link from "next/link"
+
 import { auth } from "@/auth"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -40,12 +41,13 @@ const accountNavItems = [
   },
 ]
 
-interface AccountLayoutProps {
-  children: React.ReactNode
+export default async function AccountLayout({
+  children,
+  params,
+}: {
+  children: ReactNode
   params: { locale: string }
-}
-
-export default async function AccountLayout({ children, params }: AccountLayoutProps) {
+}) {
   const session = await auth()
 
   if (!session?.user) {
