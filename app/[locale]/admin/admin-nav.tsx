@@ -19,6 +19,9 @@ const links = [
     title: "Orders",
     href: "/admin/orders",
   },
+  {title:"Payment Link",
+    href:"admin/payment-links"
+  },
   {
     title: "Users",
     href: "/admin/users",
