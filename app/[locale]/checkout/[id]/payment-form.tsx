@@ -75,7 +75,7 @@ export default function OrderDetailsForm({
 
   const CheckoutSummary = () => (
     <Card>
-      <CardContent className="p-4">
+      <CardContent className="w-full">
         <div>
           <div className="text-lg font-bold">Order Summary</div>
           <div className="space-y-2">
@@ -204,65 +204,69 @@ export default function OrderDetailsForm({
   )
 
   return (
-    <main className="max-w-6xl mx-auto">
-      <div className="grid md:grid-cols-4 gap-6">
-        <div className="md:col-span-3">
-          {/* Shipping Address */}
-          <div>
-            <div className="grid md:grid-cols-3 my-3 pb-3">
-              <div className="text-lg font-bold">
-                <span>Shipping Address</span>
-              </div>
-              <div className="col-span-2">
-                <p>
-                  {shippingAddress.fullName} <br />
-                  {shippingAddress.street} <br />
-                  {`${shippingAddress.city}, ${shippingAddress.province}, ${shippingAddress.postalCode}, ${shippingAddress.country}`}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* payment method */}
-          <div className="border-y">
-            <div className="grid md:grid-cols-3 my-3 pb-3">
-              <div className="text-lg font-bold">
-                <span>Payment Method</span>
-              </div>
-              <div className="col-span-2">
-                <p>{paymentMethod}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-3 my-3 pb-3">
-            <div className="flex text-lg font-bold">
-              <span>Items and shipping</span>
-            </div>
-            <div className="col-span-2">
-              <p>
-                Delivery date:
-                {formatDateTime(expectedDeliveryDate).dateOnly}
-              </p>
-              <ul>
-                {items.map((item) => (
-                  <li key={item.slug}>
-                    {item.name} x {item.quantity} = {item.price}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-          <div className="block md:hidden">
-            <CheckoutSummary />
-          </div>
-
-          <CheckoutFooter />
+    <main className="max-w-6xl mx-auto px-4">
+  <div className="grid md:grid-cols-12 gap-6">
+    {/* Left content area */}
+    <div className="md:col-span-8">
+      {/* Shipping Address */}
+      <div className="grid md:grid-cols-3 my-3 pb-3">
+        <div className="text-lg font-bold">
+          <span>Shipping Address</span>
         </div>
-        <div className="hidden md:block">
-          <CheckoutSummary />
+        <div className="md:col-span-2">
+          <p>
+            {shippingAddress.fullName} <br />
+            {shippingAddress.street} <br />
+            {`${shippingAddress.city}, ${shippingAddress.province}, ${shippingAddress.postalCode}, ${shippingAddress.country}`}
+          </p>
         </div>
       </div>
-    </main>
+
+      {/* Payment Method */}
+      <div className="border-y">
+        <div className="grid md:grid-cols-3 my-3 pb-3">
+          <div className="text-lg font-bold">
+            <span>Payment Method</span>
+          </div>
+          <div className="md:col-span-2">
+            <p>{paymentMethod}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Items and Shipping */}
+      <div className="grid md:grid-cols-3 my-3 pb-3">
+        <div className="text-lg font-bold">
+          <span>Items and shipping</span>
+        </div>
+        <div className="md:col-span-2">
+          <p>
+            Delivery date: {formatDateTime(expectedDeliveryDate).dateOnly}
+          </p>
+          <ul>
+            {items.map((item) => (
+              <li key={item.slug}>
+                {item.name} x {item.quantity} = {item.price}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      {/* Summary for mobile */}
+      <div className="block md:hidden">
+        <CheckoutSummary />
+      </div>
+
+      <CheckoutFooter />
+    </div>
+
+    {/* Order Summary on Desktop */}
+    <div className="hidden md:block md:col-span-4">
+      <CheckoutSummary />
+    </div>
+  </div>
+</main>
+
   )
 }
