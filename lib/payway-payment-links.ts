@@ -3,15 +3,15 @@ import crypto from "crypto"
 
 // PayWay Payment Link Configuration
 const PAYWAY_CONFIG = {
-  merchant_id: process.env.PAYWAY_MERCHANT_ID || "ec460668",
-  api_key: process.env.PAYWAY_API_KEY || "2509cd38a0de6b64bc8c92c84015796d70211374",
+  merchant_id: process.env.PAYWAY_MERCHANT_ID || "ec460814",
+  api_key: process.env.PAYWAY_API_KEY || "5b614bf17453092a752c8d91e5fa0866ef090775",
   rsa_public_key:
     process.env.PAYWAY_RSA_PUBLIC_KEY ||
     `-----BEGIN PUBLIC KEY-----
-MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCJlNo1Mbs9egwdX6Ri1QaayXPs
-zXZpPUzAB6j/7fD6DOY5VSjrZ9tURA3plvNuvD+fl7fAdIWPIquQ8gl0TzIGImba
-4OhMqdP8CuTN/pckirG62DkXsxC5ATgyZRmzVwA6K5UiHwhmEH9fE1z5Ou8isj3p
-/Px7I2AW7DSNRanpawIDAQAB
+MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCt+cXOt3xchpnOb7TYnxQgS/Ek
+28ZpBlQ9CDMarQgivKOTtamAfjxQNc0iBifsJ0iTK4F/LVtgGkKPU6OWt4Qrwz9C
+BNZpionE4uda3oow8dtaIp8B6PxnzLoM00vLb45BQHtUN5ARTMhesl5B2ajif9Gc
+zyfhL91w0yMy5xpV7QIDAQAB
 -----END PUBLIC KEY-----`,
   api_url: "https://checkout-sandbox.payway.com.kh/api/merchant-portal/merchant-access/payment-link/create",
   detail_url: "https://checkout-sandbox.payway.com.kh/api/merchant-portal/merchant-access/payment-link/detail",
