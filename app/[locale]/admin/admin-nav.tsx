@@ -20,7 +20,7 @@ const links = [
     href: "/admin/orders",
   },
   {title:"Payment Link",
-    href:"admin/payment-links"
+    href:"/admin/payment-links"
   },
   {
     title: "Users",
