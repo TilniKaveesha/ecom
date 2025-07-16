@@ -5,15 +5,15 @@ import { connectToDatabase } from "@/lib/db"
 
 // PayWay Payment Link Configuration
 const PAYWAY_CONFIG = {
-  merchant_id: process.env.PAYWAY_MERCHANT_ID || "ec460814",
-  api_key: process.env.PAYWAY_API_KEY || "5b614bf17453092a752c8d91e5fa0866ef090775",
+  merchant_id: process.env.PAYWAY_MERCHANT_ID || "ec461012",
+  api_key: process.env.PAYWAY_API_KEY || "940db74c4ecc68e7091a0609d16e5f9bf65f00be",
   rsa_public_key:
     process.env.PAYWAY_RSA_PUBLIC_KEY ||
     `-----BEGIN PUBLIC KEY-----
-MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCt+cXOt3xchpnOb7TYnxQgS/Ek
-28ZpBlQ9CDMarQgivKOTtamAfjxQNc0iBifsJ0iTK4F/LVtgGkKPU6OWt4Qrwz9C
-BNZpionE4uda3oow8dtaIp8B6PxnzLoM00vLb45BQHtUN5ARTMhesl5B2ajif9Gc
-zyfhL91w0yMy5xpV7QIDAQAB
+MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCu50Nz90osUnYjye+bjKKHBkx4
+MibRRJ7Ft7EDb8JdkmCWSqcvexOpnEBuLHHpT1tnicZvuLllU1FarXues297fmO7
+4ETnjY1RcSKXwYRl046RbJQyPa7/mffqKfNsyGHEBQhKmae8NRq7TMlt69oNgduk
+AbvOAHDlN/5zk3D7zwIDAQAB
 -----END PUBLIC KEY-----`,
   api_url: "https://checkout-sandbox.payway.com.kh/api/merchant-portal/merchant-access/payment-link/create",
 }
