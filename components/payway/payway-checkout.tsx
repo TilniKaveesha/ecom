@@ -213,7 +213,7 @@ export default function PayWayCheckout({
           </div>
           <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
             <p className="text-sm text-blue-800 dark:text-blue-200">
-              Please complete your payment in the PayWay window that opened. Don&apos;t close this page until payment is
+              Please complete your payment in the PayWay window that opened. Don't close this page until payment is
               complete.
             </p>
           </div>
