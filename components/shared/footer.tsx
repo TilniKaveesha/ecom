@@ -1,11 +1,34 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { ChevronUp, Facebook, Twitter, Instagram } from 'lucide-react'
 import { Button } from '../ui/button'
 import Link from 'next/link'
 import { APP_NAME } from '@/lib/constants'
 
+interface FooterData {
+  email?: string
+  phone?: string
+  address?: string
+}
+
 export default function Footer() {
+  const [data, setData] = useState<FooterData>({})
+
+  useEffect(() => {
+    async function fetchFooterData() {
+      try {
+        const res = await fetch('/api/settings/footer')
+        const json = await res.json()
+        setData(json)
+      } catch (err) {
+        console.error('Failed to fetch footer info:', err)
+      }
+    }
+
+    fetchFooterData()
+  }, [])
+
   return (
     <>
       {/* Floating Back to Top Button */}
@@ -48,17 +71,17 @@ export default function Footer() {
             <div>
               <h3 className="text-gray-900 text-base font-semibold mb-3">Contact</h3>
               <address className="not-italic space-y-2 text-gray-700">
-                <p>123 Main Street, Anytown, CA 12345</p>
+                <p>{data.address || 'Loading address...'}</p>
                 <p>
                   Phone:{' '}
-                  <a href="tel:+11234567890" className="hover:text-gray-900 hover:underline">
-                    +1 (123) 456-7890
+                  <a href={`tel:${data.phone}`} className="hover:text-gray-900 hover:underline">
+                    {data.phone || 'Loading...'}
                   </a>
                 </p>
                 <p>
                   Email:{' '}
-                  <a href="mailto:support@example.com" className="hover:text-gray-900 hover:underline">
-                    support@example.com
+                  <a href={`mailto:${data.email}`} className="hover:text-gray-900 hover:underline">
+                    {data.email || 'Loading...'}
                   </a>
                 </p>
               </address>

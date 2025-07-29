@@ -1,251 +1,300 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import crypto from "crypto"
 
-// RSA Encryption function (based on PayWay documentation)
+// PayWay Payment Link Configuration
+const PAYWAY_CONFIG = {
+  merchant_id: process.env.PAYWAY_MERCHANT_ID || "ec460814",
+  api_key: process.env.PAYWAY_API_KEY || "5b614bf17453092a752c8d91e5fa0866ef090775",
+  rsa_public_key:
+    process.env.PAYWAY_RSA_PUBLIC_KEY ||
+    `-----BEGIN PUBLIC KEY-----
+MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCt+cXOt3xchpnOb7TYnxQgS/Ek
+28ZpBlQ9CDMarQgivKOTtamAfjxQNc0iBifsJ0iTK4F/LVtgGkKPU6OWt4Qrwz9C
+BNZpionE4uda3oow8dtaIp8B6PxnzLoM00vLb45BQHtUN5ARTMhesl5B2ajif9Gc
+zyfhL91w0yMy5xpV7QIDAQAB
+-----END PUBLIC KEY-----`,
+  api_url: "https://checkout-sandbox.payway.com.kh/api/merchant-portal/merchant-access/payment-link/create",
+  detail_url: "https://checkout-sandbox.payway.com.kh/api/merchant-portal/merchant-access/payment-link/detail",
+}
+
+// PayWay API Response Types
+interface PayWayResponse {
+  data?: {
+    id: string
+    title: string
+    amount: string | number
+    currency: string
+    status: string
+    description: string
+    payment_limit: number
+    total_amount: number
+    total_trxn: number
+    created_at: string
+    updated_at: string
+    expired_date: number
+    return_url: string
+    merchant_ref_no: string
+    payment_link: string
+  }
+  status: {
+    code: string
+    message: string
+  }
+  tran_id: string | number
+}
+
+interface PaymentNotification {
+  tran_id: string
+  status: string
+  merchant_ref_no: string
+  amount?: string | number
+  currency?: string
+}
+
+interface PaymentLinkCreateParams {
+  title: string
+  amount: number
+  currency: string
+  description?: string
+  paymentLimit?: number
+  expiredDate?: string
+  returnUrl?: string
+  merchantRefNo?: string
+  payout?: string
+}
+
+// OpenSSL encryption function
 function opensslEncryption(source: string, publicKey: string): string {
-  const maxLength = 117 // RSA 1024-bit key can encrypt max 117 bytes
+  const maxlength = 117
   let output = ""
   let sourceData = source
 
   while (sourceData.length > 0) {
-    const input = sourceData.substring(0, maxLength)
-    const encrypted = crypto.publicEncrypt(
-      {
-        key: publicKey,
-        padding: crypto.constants.RSA_PKCS1_PADDING,
-      },
-      Buffer.from(input, "utf8"),
-    )
-    output += encrypted.toString("binary")
-    sourceData = sourceData.substring(maxLength)
+    const input = sourceData.substring(0, maxlength)
+
+    try {
+      const encrypted = crypto.publicEncrypt(
+        {
+          key: publicKey,
+          padding: crypto.constants.RSA_PKCS1_PADDING,
+        },
+        Buffer.from(input, "utf8"),
+      )
+      output += encrypted.toString("binary")
+    } catch (error) {
+      console.error("Encryption error:", error)
+      throw new Error("Failed to encrypt data with RSA public key")
+    }
+
+    sourceData = sourceData.substring(maxlength)
   }
 
   return Buffer.from(output, "binary").toString("base64")
 }
 
-// PayWay Payment Link Status Codes
-const PAYMENT_LINK_STATUS_CODES: Record<string, string> = {
-  "00": "Success",
-  PTL02: "Wrong Hash",
-  PTL05: "Parameter Invalid Format",
-  PTL99: "Merchant invalid currency",
-  PTL132: "Invalid payment link",
+// Generate current time in PayWay format
+function getCurrentPayWayTime(): string {
+  const now = new Date()
+  const year = now.getUTCFullYear()
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0")
+  const day = String(now.getUTCDate()).padStart(2, "0")
+  const hours = String(now.getUTCHours()).padStart(2, "0")
+  const minutes = String(now.getUTCMinutes()).padStart(2, "0")
+  const seconds = String(now.getUTCSeconds()).padStart(2, "0")
+
+  return `${year}${month}${day}${hours}${minutes}${seconds}`
+}
+
+// Generate HMAC SHA-512 hash
+function generateHash(requestTime: string, merchantId: string, merchantAuth: string, apiKey: string): string {
+  const b4hash = requestTime + merchantId + merchantAuth
+  return crypto.createHmac("sha512", apiKey).update(b4hash, "utf8").digest("base64")
 }
 
 export const paywayPaymentLinks = {
-  createPaymentLink: async function createPaymentLink(params: {
-    title: string
-    amount: number
-    currency: "USD" | "KHR"
-    description?: string
-    paymentLimit?: number
-    expiredDate: number // Unix timestamp
-    returnUrl: string
-    merchantRefNo?: string
-    payout?: Array<{ acc: string; amt: number }>
-    image?: File
-  }) {
-    // Validate environment variables
-    if (!process.env.PAYWAY_MERCHANT_ID || !process.env.PAYWAY_API_KEY || !process.env.PAYWAY_RSA_PUBLIC_KEY) {
-      throw new Error(
-        "PayWay Payment Link credentials not configured. Please set PAYWAY_MERCHANT_ID, PAYWAY_API_KEY, and PAYWAY_RSA_PUBLIC_KEY",
-      )
-    }
-
-    console.log("=== PayWay Payment Link Creation ===")
-    console.log("Title:", params.title)
-    console.log("Amount:", params.amount)
-    console.log("Currency:", params.currency)
-
-    // Generate required parameters
-    const request_time = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)
-    const merchant_id = process.env.PAYWAY_MERCHANT_ID.trim()
-
-    // Validate amount
-    const minAmount = params.currency === "USD" ? 0.01 : 100
-    if (params.amount < minAmount) {
-      throw new Error(`Minimum amount is ${minAmount} ${params.currency}`)
-    }
-
-    // Prepare merchant_auth data
-    const merchantAuthData = {
-      mc_id: merchant_id,
-      title: params.title.substring(0, 250),
-      amount: params.amount,
-      currency: params.currency,
-      description: params.description?.substring(0, 250) || "",
-      payment_limit: params.paymentLimit || null,
-      expired_date: params.expiredDate,
-      return_url: Buffer.from(params.returnUrl).toString("base64"),
-      merchant_ref_no: params.merchantRefNo?.substring(0, 50) || "",
-      payout: params.payout ? JSON.stringify(params.payout) : "",
-    }
-
-    console.log("=== Merchant Auth Data ===")
-    console.log(JSON.stringify(merchantAuthData, null, 2))
-
-    // Encrypt merchant_auth using RSA
-    const merchantAuthJson = JSON.stringify(merchantAuthData)
-    const rsaPublicKey = process.env.PAYWAY_RSA_PUBLIC_KEY.trim()
-
-    let merchant_auth: string
+  // Create payment link
+  async createPaymentLink(params: PaymentLinkCreateParams) {
     try {
-      merchant_auth = opensslEncryption(merchantAuthJson, rsaPublicKey)
-      console.log("✅ RSA Encryption successful")
-    } catch (error) {
-      console.error("❌ RSA Encryption failed:", error)
-      throw new Error("Failed to encrypt merchant_auth data. Check your RSA public key format.")
-    }
+      const requestTime = getCurrentPayWayTime()
+      const linkId = `pl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
-    // Generate HMAC SHA-512 hash
-    const hashString = request_time + merchant_id + merchant_auth
-    const hash = crypto.createHmac("sha512", process.env.PAYWAY_API_KEY.trim()).update(hashString).digest("base64")
+      // Validate amount
+      const amount = Number.parseFloat(params.amount.toString())
+      if (isNaN(amount) || amount <= 0) {
+        throw new Error("Invalid amount. Amount must be a positive number.")
+      }
 
-    console.log("Generated hash:", hash)
+      // Prepare merchant_auth data
+      const merchantAuthData = {
+        mc_id: PAYWAY_CONFIG.merchant_id,
+        title: params.title || "Payment Link",
+        amount: amount,
+        currency: params.currency || "USD",
+        description: params.description || "Payment via PayWay Link",
+        payment_limit: params.paymentLimit || 1,
+        expired_date: params.expiredDate ? Math.floor(new Date(params.expiredDate).getTime() / 1000) : null,
+        return_url: Buffer.from(params.returnUrl || "https://localhost:3000/api/payway/payment-link/webhook").toString(
+          "base64",
+        ),
+        merchant_ref_no: params.merchantRefNo || linkId,
+        ...(params.payout && { payout: params.payout }),
+      }
 
-    // Prepare FormData
-    const formData = new FormData()
-    formData.append("request_time", request_time)
-    formData.append("merchant_id", merchant_id)
-    formData.append("merchant_auth", merchant_auth)
-    formData.append("hash", hash)
+      console.log("🔥 Creating PayWay Payment Link:", merchantAuthData)
 
-    // Add image if provided
-    if (params.image) {
-      formData.append("image", params.image)
-    }
+      // Encrypt merchant_auth
+      const merchantAuthJson = JSON.stringify(merchantAuthData)
+      const merchantAuth = opensslEncryption(merchantAuthJson, PAYWAY_CONFIG.rsa_public_key)
 
-    const url = "https://checkout-sandbox.payway.com.kh/api/merchant-portal/merchant-access/payment-link/create"
+      // Generate hash
+      const hash = generateHash(requestTime, PAYWAY_CONFIG.merchant_id, merchantAuth, PAYWAY_CONFIG.api_key)
 
-    try {
-      console.log("=== Making Payment Link Request ===")
-      console.log("URL:", url)
+      // Prepare form data
+      const formData = new FormData()
+      formData.append("request_time", requestTime)
+      formData.append("merchant_id", PAYWAY_CONFIG.merchant_id)
+      formData.append("merchant_auth", merchantAuth)
+      formData.append("hash", hash)
 
-      const response = await fetch(url, {
+      // Make API request
+      const response = await fetch(PAYWAY_CONFIG.api_url, {
         method: "POST",
         body: formData,
       })
 
-      console.log("=== PayWay Payment Link Response ===")
-      console.log("Status:", response.status)
-      console.log("Content-Type:", response.headers.get("content-type"))
+      const responseText = await response.text()
+      console.log("🔥 PayWay API Response:", responseText)
 
-      if (response.ok) {
-        const result = await response.json()
-        console.log("✅ PayWay Payment Link Response:", result)
+      let result: PayWayResponse
+      try {
+        result = JSON.parse(responseText)
+      } catch (e) {
+        throw new Error(`Invalid JSON response: ${responseText}`)
+      }
 
-        const statusCode = result.status?.code
-        const statusMessage = result.status?.message || PAYMENT_LINK_STATUS_CODES[statusCode] || "Unknown status"
+      if (response.ok && result.status?.code === "00") {
+        const paymentLinkUrl = result.data!.payment_link.startsWith("http")
+          ? result.data!.payment_link
+          : `https://${result.data!.payment_link}`
 
-        if (statusCode === "00") {
-          return {
-            success: true,
-            data: result.data,
-            payment_link: result.data.payment_link,
-            payment_link_id: result.data.id,
-            status: {
-              code: statusCode,
-              message: statusMessage,
-              tran_id: result.tran_id,
-            },
-          }
-        } else {
-          throw new Error(`PayWay Payment Link Error: ${statusMessage} (Code: ${statusCode})`)
+        return {
+          success: true,
+          payment_link_id: result.data!.id,
+          payment_link: paymentLinkUrl,
+          title: result.data!.title,
+          amount: result.data!.amount,
+          currency: result.data!.currency,
+          status: result.data!.status,
+          merchant_ref_no: result.data!.merchant_ref_no,
+          expired_date: result.data!.expired_date,
         }
       } else {
-        const errorText = await response.text()
-        console.error("❌ PayWay Payment Link HTTP Error:")
-        console.error("Status:", response.status, response.statusText)
-        console.error("Response:", errorText)
-        throw new Error(`PayWay Payment Link HTTP Error: ${response.status} - ${response.statusText}`)
+        throw new Error(`PayWay API Error: ${result.status?.message || "Unknown error"}`)
       }
     } catch (error) {
-      console.error("❌ PayWay Payment Link Error:", error)
+      console.error("🔥 PayWay Payment Link Creation Error:", error)
       throw error
     }
   },
 
-  getPaymentLinkDetails: async function getPaymentLinkDetails(paymentLinkId: string) {
-    if (!process.env.PAYWAY_MERCHANT_ID || !process.env.PAYWAY_API_KEY || !process.env.PAYWAY_RSA_PUBLIC_KEY) {
-      throw new Error("PayWay Payment Link credentials not configured")
-    }
-
-    const request_time = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)
-    const merchant_id = process.env.PAYWAY_MERCHANT_ID.trim()
-
-    // Prepare merchant_auth data
-    const merchantAuthData = {
-      mc_id: merchant_id,
-      id: paymentLinkId,
-    }
-
-    // Encrypt merchant_auth using RSA
-    const merchantAuthJson = JSON.stringify(merchantAuthData)
-    const rsaPublicKey = process.env.PAYWAY_RSA_PUBLIC_KEY.trim()
-    const merchant_auth = opensslEncryption(merchantAuthJson, rsaPublicKey)
-
-    // Generate HMAC SHA-512 hash
-    const hashString = request_time + merchant_id + merchant_auth
-    const hash = crypto.createHmac("sha512", process.env.PAYWAY_API_KEY.trim()).update(hashString).digest("base64")
-
-    const url = "https://checkout-sandbox.payway.com.kh/api/merchant-portal/merchant-access/payment-link/detail"
-
+  // Get payment link status
+  async getPaymentLinkStatus(paymentLinkId: string) {
     try {
-      const response = await fetch(url, {
+      const requestTime = getCurrentPayWayTime()
+
+      const merchantAuthData = {
+        mc_id: PAYWAY_CONFIG.merchant_id,
+        id: paymentLinkId,
+      }
+
+      const merchantAuthJson = JSON.stringify(merchantAuthData)
+      const merchantAuth = opensslEncryption(merchantAuthJson, PAYWAY_CONFIG.rsa_public_key)
+      const hash = generateHash(requestTime, PAYWAY_CONFIG.merchant_id, merchantAuth, PAYWAY_CONFIG.api_key)
+
+      const requestBody = {
+        request_time: requestTime,
+        merchant_id: PAYWAY_CONFIG.merchant_id,
+        merchant_auth: merchantAuth,
+        hash: hash,
+      }
+
+      const response = await fetch(PAYWAY_CONFIG.detail_url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          request_time,
-          merchant_id,
-          merchant_auth,
-          hash,
-        }),
+        body: JSON.stringify(requestBody),
       })
 
-      if (response.ok) {
-        const result = await response.json()
-        const statusCode = result.status?.code
+      const responseText = await response.text()
+      let result: PayWayResponse
 
-        if (statusCode === "00") {
-          return {
-            success: true,
-            data: result.data,
-            status: {
-              code: statusCode,
-              message: result.status.message,
-              tran_id: result.tran_id,
-            },
-          }
-        } else {
-          throw new Error(`PayWay Error: ${result.status.message} (Code: ${statusCode})`)
+      try {
+        result = JSON.parse(responseText)
+      } catch (e) {
+        throw new Error(`Invalid JSON response: ${responseText}`)
+      }
+
+      if (response.ok && result.status?.code === "00") {
+        return {
+          success: true,
+          payment_link_id: result.data!.id,
+          status: result.data!.status,
+          total_amount: result.data!.total_amount,
+          total_transactions: result.data!.total_trxn,
+          status_message: result.status.message,
         }
       } else {
-        const errorText = await response.text()
-        throw new Error(`PayWay HTTP Error: ${response.status} - ${errorText}`)
+        return {
+          success: false,
+          error: result.status?.message || "Failed to get payment link status",
+          status_message: result.status?.message,
+        }
       }
     } catch (error) {
-      console.error("PayWay getPaymentLinkDetails error:", error)
-      throw error
+      console.error("🔥 PayWay Status Check Error:", error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+        status_message: "Failed to check payment status",
+      }
     }
   },
 
-  // Handle webhook notification from PayWay
-  handlePaymentNotification: function handlePaymentNotification(notification: {
-    tran_id: string
-    status: string
-    merchant_ref_no: string
-  }) {
-    console.log("=== PayWay Payment Notification ===")
-    console.log("Transaction ID:", notification.tran_id)
-    console.log("Status:", notification.status)
-    console.log("Merchant Ref:", notification.merchant_ref_no)
+  // Handle payment notification
+  handlePaymentNotification(notification: PaymentNotification) {
+    try {
+      const { tran_id, status, merchant_ref_no } = notification
 
-    return {
-      success: notification.status === "00",
-      transaction_id: notification.tran_id,
-      merchant_ref: notification.merchant_ref_no,
-      status: notification.status,
+      console.log("🔥 Processing PayWay notification:", { tran_id, status, merchant_ref_no })
+
+      // PayWay status codes
+      const statusMessages: Record<string, string> = {
+        "00": "Payment successful",
+        "01": "Payment failed",
+        "02": "Payment cancelled",
+        "03": "Payment pending",
+        "99": "Payment error",
+      }
+
+      const isSuccess = status === "00"
+      const statusMessage = statusMessages[status] || `Unknown status: ${status}`
+
+      return {
+        success: isSuccess,
+        status_code: status,
+        status_message: statusMessage,
+        transaction_id: tran_id,
+        merchant_ref_no: merchant_ref_no,
+      }
+    } catch (error) {
+      console.error("🔥 Notification processing error:", error)
+      return {
+        success: false,
+        status_code: "ERROR",
+        status_message: "Failed to process notification",
+        error: error instanceof Error ? error.message : "Unknown error",
+      }
     }
   },
 }
