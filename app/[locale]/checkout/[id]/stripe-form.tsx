@@ -21,6 +21,7 @@ export default function StripeForm({
     setting: { site },
   } = useSettingStore()
 
+
   const stripe = useStripe()
   const elements = useElements()
   const [isLoading, setIsLoading] = useState(false)
