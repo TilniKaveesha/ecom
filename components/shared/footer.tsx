@@ -1,6 +1,5 @@
 "use client"
 
-<<<<<<< HEAD
 import { useEffect, useState } from "react"
 import { ChevronUp, ChevronDown, Facebook, Twitter, Instagram } from "lucide-react"
 import { Button } from "../ui/button"
@@ -12,50 +11,25 @@ interface FooterData {
   phone?: string
   address?: string
 }
-=======
-import { useEffect, useState } from 'react'
-import { ChevronUp, Facebook, Twitter, Instagram } from 'lucide-react'
-import { Button } from '../ui/button'
-import Link from 'next/link'
-import { APP_NAME } from '@/lib/constants'
->>>>>>> 849e67b2595e2ca7f0597271fce8d663ee7c0fb4
-
-interface FooterData {
-  email?: string
-  phone?: string
-  address?: string
-}
 
 export default function Footer() {
   const [data, setData] = useState<FooterData>({})
-<<<<<<< HEAD
   const [expandedFaq, setExpandedFaq] = useState(false)
-=======
->>>>>>> 849e67b2595e2ca7f0597271fce8d663ee7c0fb4
 
   useEffect(() => {
     async function fetchFooterData() {
       try {
-<<<<<<< HEAD
         const res = await fetch("/api/settings/footer")
         const json = await res.json()
         setData(json)
       } catch (err) {
         console.error("Failed to fetch footer info:", err)
-=======
-        const res = await fetch('/api/settings/footer')
-        const json = await res.json()
-        setData(json)
-      } catch (err) {
-        console.error('Failed to fetch footer info:', err)
->>>>>>> 849e67b2595e2ca7f0597271fce8d663ee7c0fb4
       }
     }
 
     fetchFooterData()
   }, [])
 
-<<<<<<< HEAD
   const faqCategories = [
     { title: "General Info", href: "/faq/general" },
     { title: "Payment Methods", href: "/faq/payments" },
@@ -65,8 +39,6 @@ export default function Footer() {
     { title: "Refund Purchase", href: "/faq/refunds" },
   ]
 
-=======
->>>>>>> 849e67b2595e2ca7f0597271fce8d663ee7c0fb4
   return (
     <>
       {/* Floating Back to Top Button */}
@@ -134,7 +106,6 @@ export default function Footer() {
             <div>
               <h3 className="text-gray-900 text-base font-semibold mb-3">Contact</h3>
               <address className="not-italic space-y-2 text-gray-700">
-<<<<<<< HEAD
                 <p>{data.address || "Loading address..."}</p>
                 <p>
                   Phone:{" "}
@@ -146,19 +117,6 @@ export default function Footer() {
                   Email:{" "}
                   <a href={`mailto:${data.email}`} className="hover:text-gray-900 hover:underline">
                     {data.email || "Loading..."}
-=======
-                <p>{data.address || 'Loading address...'}</p>
-                <p>
-                  Phone:{' '}
-                  <a href={`tel:${data.phone}`} className="hover:text-gray-900 hover:underline">
-                    {data.phone || 'Loading...'}
-                  </a>
-                </p>
-                <p>
-                  Email:{' '}
-                  <a href={`mailto:${data.email}`} className="hover:text-gray-900 hover:underline">
-                    {data.email || 'Loading...'}
->>>>>>> 849e67b2595e2ca7f0597271fce8d663ee7c0fb4
                   </a>
                 </p>
               </address>
