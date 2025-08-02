@@ -301,3 +301,17 @@ export const SettingInputSchema = z.object({
     .min(1, 'At least one delivery date is required'),
   defaultDeliveryDate: z.string().min(1, 'Delivery date is required'),
 })
+
+// FAQ validators
+export const FaqInputSchema = z.object({
+  question: z.string().min(1, "Question is required"),
+  answer: z.string().min(1, "Answer is required"),
+  category: z.enum(["general", "payments", "delivery", "order-status", "returns", "refunds"]),
+  tags: z.array(z.string()).optional(),
+  isPublished: z.boolean().default(true),
+  order: z.number().default(0),
+})
+
+export const FaqUpdateSchema = FaqInputSchema.extend({
+  _id: z.string(),
+})

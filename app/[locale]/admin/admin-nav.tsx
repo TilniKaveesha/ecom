@@ -19,7 +19,7 @@ const links = [
     title: "Orders",
     href: "/admin/orders",
   },
-  {title:"Payment Link",
+  {title:"PaymentLink",
     href:"/admin/payment-links"
   },
   {
@@ -34,6 +34,7 @@ const links = [
     title: "Settings",
     href: "/admin/settings",
   },
+  { title: "faqs", href: "/admin/faqs" },
 ]
 export function AdminNav({ className, ...props }: React.HTMLAttributes<HTMLElement>) {
   const pathname = usePathname()
