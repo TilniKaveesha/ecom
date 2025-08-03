@@ -1,37 +1,58 @@
-import type { IFaqInput } from "@/types"
-import { type Document, type Model, model, models, Schema } from "mongoose"
+import { Schema, model, models, type Document } from "mongoose"
 
-export interface IFaq extends Document, IFaqInput {
-  _id: string
+export interface IFAQ extends Document {
+  question: string
+  answer: string
+  category: string
+  categorySlug: string
+  tags: string[]
+  isPublished: boolean
+  views: number
+  displayOrder: number
   createdAt: Date
   updatedAt: Date
 }
 
-const faqSchema = new Schema<IFaq>(
+const faqSchema = new Schema<IFAQ>(
   {
     question: {
       type: String,
       required: true,
+      trim: true,
+      maxlength: 500,
     },
     answer: {
       type: String,
       required: true,
+      trim: true,
     },
     category: {
       type: String,
       required: true,
-      enum: ["general", "payments", "delivery", "order-status", "returns", "refunds"],
+      trim: true,
+    },
+    categorySlug: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true,
     },
     tags: [
       {
         type: String,
+        trim: true,
+        lowercase: true,
       },
     ],
     isPublished: {
       type: Boolean,
-      default: true,
+      default: false,
     },
-    order: {
+    views: {
+      type: Number,
+      default: 0,
+    },
+    displayOrder: {
       type: Number,
       default: 0,
     },
@@ -41,9 +62,12 @@ const faqSchema = new Schema<IFaq>(
   },
 )
 
-// Index for search functionality
+// Create indexes for better search performance
 faqSchema.index({ question: "text", answer: "text", tags: "text" })
+faqSchema.index({ categorySlug: 1, isPublished: 1 })
+faqSchema.index({ views: -1 })
+faqSchema.index({ displayOrder: 1 })
 
-const Faq = (models.Faq as Model<IFaq>) || model<IFaq>("Faq", faqSchema)
+const FAQ = models.FAQ || model<IFAQ>("FAQ", faqSchema)
 
-export default Faq
+export default FAQ

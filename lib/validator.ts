@@ -302,16 +302,33 @@ export const SettingInputSchema = z.object({
   defaultDeliveryDate: z.string().min(1, 'Delivery date is required'),
 })
 
-// FAQ validators
-export const FaqInputSchema = z.object({
-  question: z.string().min(1, "Question is required"),
-  answer: z.string().min(1, "Answer is required"),
-  category: z.enum(["general", "payments", "delivery", "order-status", "returns", "refunds"]),
-  tags: z.array(z.string()).optional(),
-  isPublished: z.boolean().default(true),
-  order: z.number().default(0),
+// New FAQ validators
+export const insertFaqSchema = z.object({
+  question: z
+    .string()
+    .min(5, "Question must be at least 5 characters")
+    .max(500, "Question must be less than 500 characters"),
+  answer: z.string().min(10, "Answer must be at least 10 characters"),
+  category: z.string().min(1, "Category is required"),
+  tags: z.array(z.string()).optional().default([]),
+  isPublished: z.boolean().optional().default(false),
+  displayOrder: z.number().int().nonnegative().optional().default(0),
 })
 
-export const FaqUpdateSchema = FaqInputSchema.extend({
-  _id: z.string(),
+export const updateFaqSchema = insertFaqSchema
+  .extend({
+    _id: z.string().min(1, "Id is required"),
+  })
+  .partial()
+  .required({ _id: true })
+
+export const searchFaqSchema = z.object({
+  query: z.string().min(1, "Search query is required"),
+  category: z.string().optional(),
+  limit: z.number().int().positive().optional().default(10),
+  page: z.number().int().positive().optional().default(1),
 })
+
+// Form validation schemas
+export const faqFormSchema = insertFaqSchema
+export const faqUpdateFormSchema = updateFaqSchema

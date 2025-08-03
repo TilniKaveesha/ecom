@@ -18,34 +18,36 @@ export default function DeleteDialog({
   id,
   action,
   callbackAction,
+  trigger,
 }: {
   id: string
   action: (id: string) => Promise<{ success: boolean; message: string }>
   callbackAction?: () => void
+  trigger?: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const { toast } = useToast()
+
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
       <AlertDialogTrigger asChild>
-        <Button size='sm' variant='outline'>
-          Delete
-        </Button>
+        {trigger ?? (
+          <Button size="sm" variant="outline">
+            Delete
+          </Button>
+        )}
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This action cannot be undone.
-          </AlertDialogDescription>
+          <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-
           <Button
-            variant='destructive'
-            size='sm'
+            variant="destructive"
+            size="sm"
             disabled={isPending}
             onClick={() =>
               startTransition(async () => {
@@ -57,10 +59,8 @@ export default function DeleteDialog({
                   })
                 } else {
                   setOpen(false)
-                  toast({
-                    description: res.message,
-                  })
-                  if (callbackAction) callbackAction()
+                  toast({ description: res.message })
+                  callbackAction?.()
                 }
               })
             }
@@ -72,3 +72,4 @@ export default function DeleteDialog({
     </AlertDialog>
   )
 }
+

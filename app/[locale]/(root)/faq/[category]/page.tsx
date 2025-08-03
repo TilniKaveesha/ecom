@@ -6,10 +6,10 @@ import { ChevronDown } from "lucide-react"
 import { getFaqsByCategory, getFaqCategories } from "@/lib/actions/faq.actions"
 
 interface FaqPageProps {
-  params: {
+  params: Promise<{
     category: string
     locale: string
-  }
+  }>
 }
 
 export async function generateStaticParams() {

@@ -1,174 +1,272 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use server"
 
-import { revalidatePath } from "next/cache"
 import { connectToDatabase } from "@/lib/db"
-import Faq, { type IFaq } from "@/lib/db/models/faq.model"
-import { formatError } from "@/lib/utils"
-import { FaqInputSchema, FaqUpdateSchema } from "../validator"
-import type { z } from "zod"
+import FAQ from "@/lib/db/models/faq.model"
+import type { CreateFAQInput, UpdateFAQInput, FAQ as FAQType, FAQCategory, PopularFAQ } from "@/types"
+import { revalidatePath } from "next/cache"
 
-// CREATE
-export async function createFaq(data: z.infer<typeof FaqInputSchema>) {
+// Get all FAQs
+export async function getAllFaqs(): Promise<FAQType[]> {
   try {
-    const faq = FaqInputSchema.parse(data)
     await connectToDatabase()
-    await Faq.create(faq)
+    const faqs = await FAQ.find({}).sort({ displayOrder: 1, createdAt: -1 }).lean()
+    return JSON.parse(JSON.stringify(faqs))
+  } catch (error) {
+    console.error("Error fetching FAQs:", error)
+    return []
+  }
+}
+
+// Get FAQs by category
+export async function getFaqsByCategory(categorySlug: string): Promise<FAQType[]> {
+  try {
+    await connectToDatabase()
+    const faqs = await FAQ.find({
+      categorySlug,
+      isPublished: true,
+    })
+      .sort({ displayOrder: 1, createdAt: -1 })
+      .lean()
+
+    return JSON.parse(JSON.stringify(faqs))
+  } catch (error) {
+    console.error("Error fetching FAQs by category:", error)
+    return []
+  }
+}
+
+// Get FAQ categories with counts
+export async function getFaqCategories(): Promise<FAQCategory[]> {
+  try {
+    await connectToDatabase()
+
+    const categories = [
+      {
+        slug: "general",
+        title: "General Info",
+        description: "Basic information about our services and policies",
+        icon: "📋",
+      },
+      {
+        slug: "payments",
+        title: "Payment Methods",
+        description: "Information about payment options and billing",
+        icon: "💳",
+      },
+      {
+        slug: "delivery",
+        title: "Delivery Options",
+        description: "Shipping methods, delivery times, and tracking",
+        icon: "🚚",
+      },
+      {
+        slug: "order-status",
+        title: "Order Status",
+        description: "Track your orders and understand order statuses",
+        icon: "📦",
+      },
+      {
+        slug: "returns",
+        title: "Exchange and Returns",
+        description: "Return policies, exchanges, and warranty information",
+        icon: "↩️",
+      },
+      {
+        slug: "refunds",
+        title: "Refund Purchase",
+        description: "Refund processes, timelines, and policies",
+        icon: "💰",
+      },
+    ]
+
+    // Get FAQ counts for each category
+    const categoriesWithCounts = await Promise.all(
+      categories.map(async (category) => {
+        const count = await FAQ.countDocuments({
+          categorySlug: category.slug,
+          isPublished: true,
+        })
+        return {
+          ...category,
+          faqCount: count,
+        }
+      }),
+    )
+
+    return categoriesWithCounts
+  } catch (error) {
+    console.error("Error fetching FAQ categories:", error)
+    return []
+  }
+}
+
+// Get popular FAQs
+export async function getPopularFaqs(limit = 5): Promise<PopularFAQ[]> {
+  try {
+    await connectToDatabase()
+    const faqs = await FAQ.find({ isPublished: true }).sort({ views: -1, createdAt: -1 }).limit(limit).lean()
+
+    const categories = await getFaqCategories()
+    const categoryMap = categories.reduce(
+      (acc, cat) => {
+        acc[cat.slug] = cat.title
+        return acc
+      },
+      {} as Record<string, string>,
+    )
+
+    const popularFaqs = faqs.map((faq: any) => ({
+      ...faq,
+      categoryTitle: categoryMap[faq.categorySlug] || faq.category,
+    }))
+
+    return JSON.parse(JSON.stringify(popularFaqs))
+  } catch (error) {
+    console.error("Error fetching popular FAQs:", error)
+    return []
+  }
+}
+
+// Get FAQ by ID
+export async function getFaqById(id: string): Promise<FAQType | null> {
+  try {
+    await connectToDatabase()
+    const faq = await FAQ.findById(id).lean()
+    return faq ? JSON.parse(JSON.stringify(faq)) : null
+  } catch (error) {
+    console.error("Error fetching FAQ by ID:", error)
+    return null
+  }
+}
+
+// Create FAQ
+export async function createFaq(data: CreateFAQInput): Promise<{ success: boolean; message: string; data?: FAQType }> {
+  try {
+    await connectToDatabase()
+
+    const categorySlug = data.category.toLowerCase().replace(/\s+/g, "-")
+
+    const faq = await FAQ.create({
+      ...data,
+      categorySlug,
+      views: 0,
+    })
+
     revalidatePath("/admin/faqs")
+    revalidatePath("/faq")
+    revalidatePath(`/faq/${categorySlug}`)
+
     return {
       success: true,
       message: "FAQ created successfully",
+      data: JSON.parse(JSON.stringify(faq)),
     }
   } catch (error) {
-    return { success: false, message: formatError(error) }
+    console.error("Error creating FAQ:", error)
+    return {
+      success: false,
+      message: "Failed to create FAQ",
+    }
   }
 }
 
-// UPDATE
-export async function updateFaq(data: z.infer<typeof FaqUpdateSchema>) {
+// Update FAQ
+export async function updateFaq(data: UpdateFAQInput): Promise<{ success: boolean; message: string; data?: FAQType }> {
   try {
-    const faq = FaqUpdateSchema.parse(data)
     await connectToDatabase()
-    await Faq.findByIdAndUpdate(faq._id, faq)
+
+    const updateData = { ...data }
+    if (data.category) {
+      updateData.category = data.category.toLowerCase().replace(/\s+/g, "-")
+    }
+
+    const faq = await FAQ.findByIdAndUpdate(data._id, updateData, { new: true }).lean()
+
+    if (!faq) {
+      return {
+        success: false,
+        message: "FAQ not found",
+      }
+    }
+
     revalidatePath("/admin/faqs")
+    revalidatePath("/faq")
+
     return {
       success: true,
       message: "FAQ updated successfully",
+      data: JSON.parse(JSON.stringify(faq)),
     }
   } catch (error) {
-    return { success: false, message: formatError(error) }
+    console.error("Error updating FAQ:", error)
+    return {
+      success: false,
+      message: "Failed to update FAQ",
+    }
   }
 }
 
-// DELETE
-export async function deleteFaq(id: string) {
+// Delete FAQ
+export async function deleteFaq(id: string): Promise<{ success: boolean; message: string }> {
   try {
     await connectToDatabase()
-    const res = await Faq.findByIdAndDelete(id)
-    if (!res) throw new Error("FAQ not found")
+
+    const faq = await FAQ.findByIdAndDelete(id)
+
+    if (!faq) {
+      return {
+        success: false,
+        message: "FAQ not found",
+      }
+    }
+
     revalidatePath("/admin/faqs")
+    revalidatePath("/faq")
+    revalidatePath(`/faq/${faq.categorySlug}`)
+
     return {
       success: true,
       message: "FAQ deleted successfully",
     }
   } catch (error) {
-    return { success: false, message: formatError(error) }
+    console.error("Error deleting FAQ:", error)
+    return {
+      success: false,
+      message: "Failed to delete FAQ",
+    }
   }
 }
 
-// GET ALL
-export async function getAllFaqs() {
-  await connectToDatabase()
-  const faqs = await Faq.find().sort({ order: 1, createdAt: -1 })
-  return JSON.parse(JSON.stringify(faqs)) as IFaq[]
+// Search FAQs
+export async function searchFaqs(query: string): Promise<FAQType[]> {
+  try {
+    await connectToDatabase()
+
+    const faqs = await FAQ.find({
+      isPublished: true,
+      $or: [
+        { question: { $regex: query, $options: "i" } },
+        { answer: { $regex: query, $options: "i" } },
+        { tags: { $in: [new RegExp(query, "i")] } },
+      ],
+    })
+      .sort({ views: -1, createdAt: -1 })
+      .lean()
+
+    return JSON.parse(JSON.stringify(faqs))
+  } catch (error) {
+    console.error("Error searching FAQs:", error)
+    return []
+  }
 }
 
-// GET BY ID
-export async function getFaqById(faqId: string) {
-  await connectToDatabase()
-  const faq = await Faq.findById(faqId)
-  if (!faq) throw new Error("FAQ not found")
-  return JSON.parse(JSON.stringify(faq)) as IFaq
-}
-
-// GET BY CATEGORY
-export async function getFaqsByCategory(categorySlug: string) {
-  await connectToDatabase()
-  const faqs = await Faq.find({
-    category: categorySlug,
-    isPublished: true,
-  }).sort({ order: 1, createdAt: -1 })
-  return JSON.parse(JSON.stringify(faqs)) as IFaq[]
-}
-
-// GET CATEGORIES
-export async function getFaqCategories() {
-  await connectToDatabase()
-
-  const categories = [
-    {
-      slug: "general",
-      title: "General Info",
-      description: "Basic information about our services and policies",
-      icon: "📋",
-    },
-    {
-      slug: "payments",
-      title: "Payment Methods",
-      description: "Information about payment options and billing",
-      icon: "💳",
-    },
-    {
-      slug: "delivery",
-      title: "Delivery Options",
-      description: "Shipping methods, costs, and delivery times",
-      icon: "🚚",
-    },
-    {
-      slug: "order-status",
-      title: "Order Status",
-      description: "Track your orders and understand order statuses",
-      icon: "📦",
-    },
-    {
-      slug: "returns",
-      title: "Exchange and Returns",
-      description: "Return policy, exchanges, and return process",
-      icon: "↩️",
-    },
-    {
-      slug: "refunds",
-      title: "Refund Purchase",
-      description: "Refund policy and refund process information",
-      icon: "💰",
-    },
-  ]
-
-  // Get FAQ count for each category
-  const categoriesWithCount = await Promise.all(
-    categories.map(async (category) => {
-      const count = await Faq.countDocuments({
-        category: category.slug,
-        isPublished: true,
-      })
-      return {
-        ...category,
-        faqCount: count,
-      }
-    }),
-  )
-
-  return categoriesWithCount
-}
-
-// GET POPULAR FAQS
-export async function getPopularFaqs(limit = 5) {
-  await connectToDatabase()
-  const faqs = await Faq.find({ isPublished: true }).sort({ views: -1, createdAt: -1 }).limit(limit)
-
-  const categories = await getFaqCategories()
-
-  const faqsWithCategory = faqs.map((faq) => {
-    const category = categories.find((cat) => cat.slug === faq.category)
-    return {
-      ...faq.toObject(),
-      categoryTitle: category?.title || faq.category,
-    }
-  })
-
-  return JSON.parse(JSON.stringify(faqsWithCategory))
-}
-
-// SEARCH FAQS
-export async function searchFaqs(query: string) {
-  await connectToDatabase()
-  const faqs = await Faq.find({
-    isPublished: true,
-    $or: [
-      { question: { $regex: query, $options: "i" } },
-      { answer: { $regex: query, $options: "i" } },
-      { tags: { $in: [new RegExp(query, "i")] } },
-    ],
-  }).sort({ views: -1, createdAt: -1 })
-
-  return JSON.parse(JSON.stringify(faqs)) as IFaq[]
+// Increment FAQ views
+export async function incrementFaqViews(id: string): Promise<void> {
+  try {
+    await connectToDatabase()
+    await FAQ.findByIdAndUpdate(id, { $inc: { views: 1 } })
+  } catch (error) {
+    console.error("Error incrementing FAQ views:", error)
+  }
 }
