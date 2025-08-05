@@ -37,6 +37,8 @@ const categories = [
 ]
 
 export function FaqForm({ faq }: FaqFormProps) {
+  console.log("📦 Faq received in FaqForm:", faq)
+
   const router = useRouter()
   const { toast } = useToast()
   const [isPending, startTransition] = useTransition()
