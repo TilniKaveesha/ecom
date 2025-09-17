@@ -178,7 +178,7 @@ export async function updateFaq(data: UpdateFAQInput): Promise<{ success: boolea
 
     const updateData = { ...data }
     if (data.category) {
-      updateData.category = data.category.toLowerCase().replace(/\s+/g, "-")
+      updateData.categorySlug = data.category.toLowerCase().replace(/\s+/g, "-")
     }
 
     const faq = await FAQ.findByIdAndUpdate(data._id, updateData, { new: true }).lean()
@@ -192,6 +192,9 @@ export async function updateFaq(data: UpdateFAQInput): Promise<{ success: boolea
 
     revalidatePath("/admin/faqs")
     revalidatePath("/faq")
+    if ((faq as any).categorySlug) {
+      revalidatePath(`/faq/${(faq as any).categorySlug}`)
+    }
 
     return {
       success: true,

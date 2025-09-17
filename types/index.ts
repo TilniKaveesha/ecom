@@ -1,4 +1,4 @@
-import {
+import type {
   CarouselSchema,
   CartSchema,
   DeliveryDateSchema,
@@ -17,8 +17,8 @@ import {
   UserSignInSchema,
   UserSignUpSchema,
   WebPageInputSchema,
-} from '@/lib/validator'
-import { z } from 'zod'
+} from "@/lib/validator"
+import type { z } from "zod"
 
 export type IReviewInput = z.infer<typeof ReviewInputSchema>
 export type IReviewDetails = IReviewInput & {
@@ -128,4 +128,5 @@ export interface CreateFAQInput {
 
 export interface UpdateFAQInput extends Partial<CreateFAQInput> {
   _id: string
+  categorySlug?: string
 }
