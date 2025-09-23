@@ -207,31 +207,6 @@ const CheckoutForm = ({ userEmail }: CheckoutFormProps) => {
           <div>
             {showPayWayCheckout && paymentMethod === "PayWay" ? (
               <div className="space-y-4">
-                <PayWayCheckout
-                  orderId={`temp_${Date.now()}`}
-                  amount={totalPrice}
-                  customerInfo={{
-                    name: shippingAddress?.fullName || "",
-                    email: userEmail || "customer@example.com",
-                    phone: shippingAddress?.phone || "",
-                  }}
-                  onSuccess={() => handlePayWayOrder()}
-                  onError={(error: string) => {
-                    toast({
-                      title: "Payment Failed",
-                      description: error,
-                      variant: "destructive",
-                    })
-                    setShowPayWayCheckout(false)
-                  }}
-                  onCancel={() => {
-                    setShowPayWayCheckout(false)
-                    toast({
-                      title: "Payment Cancelled",
-                      description: "You can try again when ready.",
-                    })
-                  }}
-                />
                 <Button variant="outline" onClick={() => setShowPayWayCheckout(false)} className="w-full">
                   Back to Order Review
                 </Button>
