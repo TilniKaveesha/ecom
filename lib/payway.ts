@@ -141,18 +141,22 @@ export const payway = {
       throw new Error("PayWay credentials not configured. Please set PAYWAY_MERCHANT_ID and PAYWAY_API_KEY")
     }
 
-    console.log("=== PayWay Integration Debug ===")
+    console.log("=== PayWay Purchase API Integration ===")
     console.log("Payment Option:", paymentOption || "all_methods")
     console.log("Merchant ID:", process.env.PAYWAY_MERCHANT_ID)
 
-    // Generate required parameters
+    // Generate required parameters in exact format specified
     const req_time = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)
     const merchant_id = process.env.PAYWAY_MERCHANT_ID.trim()
-    const tran_id = `TXN_${orderId}_${Date.now()}`
+
+    // Use format similar to API example: trx-20201019130949
+    const timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)
+    const tran_id = `trx-${timestamp}`.substring(0, 20) // Ensure <= 20 chars
+
     const amount = price.toFixed(2)
     const currency = "USD"
 
-    // Customer info validation and formatting
+    // Customer info validation and formatting per API spec
     const nameParts = customerInfo.name.trim().split(" ")
     const firstname = nameParts[0]?.replace(/[^a-zA-Z\s]/g, "").substring(0, 20) || ""
     const lastname =
@@ -162,14 +166,14 @@ export const payway = {
         .replace(/[^a-zA-Z\s]/g, "")
         .substring(0, 20) || ""
 
-    // Email validation
+    // Email validation per API spec
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     const email = emailRegex.test(customerInfo.email) ? customerInfo.email.substring(0, 50) : ""
 
-    // Phone validation (remove non-digits, keep max 20 chars)
+    // Phone validation per API spec (remove non-digits, keep max 20 chars)
     const phone = customerInfo.phone.replace(/[^\d+\-\s()]/g, "").substring(0, 20) || ""
 
-    // Validate required fields
+    // Validate required fields per API documentation
     if (!firstname) {
       throw new Error("Invalid first name. Must contain only letters and be less than 20 characters.")
     }
@@ -177,11 +181,11 @@ export const payway = {
       throw new Error("Invalid email address.")
     }
 
-    // Transaction parameters
+    // Transaction parameters per Purchase API spec
     const type = "purchase"
     const payment_option = paymentOption
 
-    // Items - base64 encoded JSON
+    // Items - base64 encoded JSON per API spec
     const items = Buffer.from(
       JSON.stringify([
         {
@@ -194,13 +198,13 @@ export const payway = {
 
     const shipping = "0.00"
 
-    // URLs
+    // URLs per API specification
     const return_url = `${process.env.NEXT_PUBLIC_SERVER_URL}/api/payway/return`
     const cancel_url = `${process.env.NEXT_PUBLIC_SERVER_URL}/api/payway/cancel`
     const continue_success_url = `${process.env.NEXT_PUBLIC_SERVER_URL}/checkout/${orderId}/stripe-payment-success`
     const return_deeplink = ""
 
-    // Custom fields
+    // Custom fields per API spec
     const custom_fields = Buffer.from(
       JSON.stringify({
         order_id: orderId,
@@ -209,7 +213,7 @@ export const payway = {
     ).toString("base64")
 
     const return_params = orderId
-    const view_type = paymentOption === "abapay_khqr_deeplink" ? "popup" : "" // Use popup for QR deeplink
+    const view_type = paymentOption === "abapay_khqr_deeplink" ? "popup" : ""
     const payment_gate = "0"
     const payout = ""
     const lifetime = "30"
@@ -217,7 +221,6 @@ export const payway = {
     const google_pay_token = ""
     const skip_success_page = "0"
 
-    // Hash generation - EXACT order as per PayWay documentation
     const hashString =
       req_time +
       merchant_id +
@@ -244,7 +247,8 @@ export const payway = {
       google_pay_token +
       skip_success_page
 
-    console.log("=== PayWay Request Parameters ===")
+    console.log("=== PayWay Purchase API Request Parameters ===")
+    console.log("Transaction ID:", tran_id, `(${tran_id.length} chars)`)
     console.log("First Name:", firstname)
     console.log("Last Name:", lastname)
     console.log("Email:", email)
@@ -254,12 +258,12 @@ export const payway = {
     console.log("Payment Option:", payment_option)
     console.log("View Type:", view_type)
 
-    // Generate hash using HMAC SHA-512
+    // Generate hash using HMAC SHA-512 per API spec
     const hash = crypto.createHmac("sha512", process.env.PAYWAY_API_KEY.trim()).update(hashString).digest("base64")
 
     console.log("Generated hash:", hash)
+    console.log("Hash string length:", hashString.length)
 
-    // Prepare FormData - exactly as shown in PayWay documentation
     const formData = new FormData()
     formData.append("req_time", req_time)
     formData.append("merchant_id", merchant_id)
@@ -289,11 +293,10 @@ export const payway = {
     formData.append("skip_success_page", skip_success_page)
     formData.append("hash", hash)
 
-    // Use the exact URL from your credentials
     const url = "https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase"
 
     try {
-      console.log("=== Making PayWay Request ===")
+      console.log("=== Making PayWay Purchase API Request ===")
       console.log("URL:", url)
       console.log("Method: POST")
       console.log("Content-Type: multipart/form-data")
@@ -304,7 +307,7 @@ export const payway = {
         // Don't set Content-Type header - let fetch handle it for FormData
       })
 
-      console.log("=== PayWay Response ===")
+      console.log("=== PayWay Purchase API Response ===")
       console.log("Status:", response.status)
       console.log("Content-Type:", response.headers.get("content-type"))
 
@@ -312,11 +315,10 @@ export const payway = {
         const contentType = response.headers.get("content-type")
 
         if (contentType?.includes("application/json")) {
-          // JSON response - QR codes, deeplinks, etc.
           const result = await response.json()
           console.log("✅ PayWay JSON Response:", result)
 
-          const statusCode = result.status?.code // This could be string "00" or number 0
+          const statusCode = result.status?.code
           const statusMessage = result.status?.message || getPayWayStatusMessage(statusCode)
 
           if (isPayWaySuccess(statusCode)) {
@@ -410,7 +412,7 @@ export const payway = {
         throw new Error(`PayWay HTTP Error: ${response.status} - ${response.statusText}`)
       }
     } catch (error) {
-      console.error("❌ PayWay Integration Error:", error)
+      console.error("❌ PayWay Purchase API Integration Error:", error)
       throw error
     }
   },

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Loader2, ExternalLink, CreditCard, ChevronRight, ArrowLeft } from "lucide-react"
+import { Loader2, ExternalLink, CreditCard, ChevronRight, ArrowLeft, Smartphone, Monitor } from "lucide-react"
 import Image from "next/image"
 
 interface PaywayCheckoutProps {
@@ -17,6 +17,91 @@ interface PaywayCheckoutProps {
   onSuccess?: (transactionRef: string) => void
   onError?: (error: string) => void
   onCancel?: () => void
+}
+
+const useDeviceDetection = () => {
+  const [isMobile, setIsMobile] = useState(false)
+  const [isIOS, setIsIOS] = useState(false)
+  const [isAndroid, setIsAndroid] = useState(false)
+
+  useEffect(() => {
+    const userAgent = navigator.userAgent.toLowerCase()
+    const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent)
+    const isIOSDevice = /iphone|ipad|ipod/i.test(userAgent)
+    const isAndroidDevice = /android/i.test(userAgent)
+
+    setIsMobile(isMobileDevice)
+    setIsIOS(isIOSDevice)
+    setIsAndroid(isAndroidDevice)
+  }, [])
+
+  return { isMobile, isIOS, isAndroid }
+}
+
+const getAvailablePaymentMethods = (isMobile: boolean, isIOS: boolean, isAndroid: boolean) => {
+  const methods = [
+    {
+      id: "aba-khqr",
+      name: "ABA KHQR",
+      description: isMobile ? "Scan with your banking app" : "Scan QR code to pay",
+      icon: "aba-bank",
+      deviceType: "all",
+      priority: 1,
+    },
+    {
+      id: "aba-deeplink",
+      name: "ABA Pay",
+      description: "Open directly in ABA Mobile app",
+      icon: "aba-bank",
+      deviceType: "mobile",
+      priority: 2,
+    },
+    {
+      id: "card",
+      name: "Credit/Debit Card",
+      description: "Visa, Mastercard, UnionPay, JCB",
+      icon: "cards",
+      deviceType: "all",
+      priority: 3,
+    },
+    {
+      id: "google_pay",
+      name: "Google Pay",
+      description: "Pay with Google Pay",
+      icon: "google-pay",
+      deviceType: isAndroid ? "preferred" : "mobile",
+      priority: isAndroid ? 1 : 4,
+    },
+    {
+      id: "alipay",
+      name: "Alipay",
+      description: "Scan to pay with Alipay",
+      icon: "alipay",
+      deviceType: "all",
+      priority: 5,
+    },
+    {
+      id: "wechat",
+      name: "WeChat Pay",
+      description: "Scan to pay with WeChat",
+      icon: "wechat",
+      deviceType: "all",
+      priority: 6,
+    },
+  ]
+
+  // Filter methods based on device type
+  const availableMethods = methods.filter((method) => {
+    if (method.deviceType === "all") return true
+    if (method.deviceType === "mobile" && isMobile) return true
+    if (method.deviceType === "preferred") return true
+    return false
+  })
+
+  // Sort by priority
+  availableMethods.sort((a, b) => a.priority - b.priority)
+
+  return availableMethods
 }
 
 export default function PayWayCheckout({
@@ -35,6 +120,15 @@ export default function PayWayCheckout({
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("aba-khqr")
   const [showPaymentInterface, setShowPaymentInterface] = useState(false)
   const [transactionId, setTransactionId] = useState<string | null>(null)
+
+  const { isMobile, isIOS, isAndroid } = useDeviceDetection()
+  const availablePaymentMethods = getAvailablePaymentMethods(isMobile, isIOS, isAndroid)
+
+  useEffect(() => {
+    if (availablePaymentMethods.length > 0) {
+      setSelectedPaymentMethod(availablePaymentMethods[0].id)
+    }
+  }, [isMobile, isAndroid])
 
   const verifyPaymentStatus = useCallback(
     async (tranId: string) => {
@@ -148,6 +242,8 @@ export default function PayWayCheckout({
     setError(null)
 
     try {
+      const apiPaymentMethod = selectedPaymentMethod === "aba-deeplink" ? "aba-khqr" : selectedPaymentMethod
+
       const response = await fetch("/api/payway/create-transaction", {
         method: "POST",
         headers: {
@@ -158,7 +254,7 @@ export default function PayWayCheckout({
           amount,
           currency,
           customerInfo,
-          paymentMethod: selectedPaymentMethod,
+          paymentMethod: apiPaymentMethod,
           return_url: `${window.location.origin}/api/payway/callback`,
         }),
       })
@@ -246,6 +342,11 @@ export default function PayWayCheckout({
     setError(null)
   }
 
+  const getPaymentMethodDisplayName = (methodId: string) => {
+    const method = availablePaymentMethods.find((m) => m.id === methodId)
+    return method?.name || methodId
+  }
+
   if (isWaitingForPayment) {
     return (
       <div className="w-full max-w-md mx-auto bg-white rounded-lg shadow-sm border border-gray-100">
@@ -280,6 +381,8 @@ export default function PayWayCheckout({
   }
 
   if (showPaymentInterface) {
+    const selectedMethod = availablePaymentMethods.find((m) => m.id === selectedPaymentMethod)
+
     return (
       <div className="w-full max-w-md mx-auto bg-white rounded-lg shadow-sm border border-gray-100">
         <div className="p-6 space-y-4">
@@ -289,22 +392,14 @@ export default function PayWayCheckout({
             </Button>
             <div className="flex items-center space-x-3">
               <Image
-                src={`/icons/${selectedPaymentMethod === "card" ? "cards" : selectedPaymentMethod === "aba-khqr" ? "aba-bank" : selectedPaymentMethod}.svg`}
-                alt={selectedPaymentMethod}
+                src={`/icons/${selectedMethod?.icon || selectedPaymentMethod}.svg`}
+                alt={selectedMethod?.name || selectedPaymentMethod}
                 width={32}
                 height={32}
                 className="rounded"
               />
               <div>
-                <div className="font-medium text-[#1F2937]">
-                  {selectedPaymentMethod === "aba-khqr"
-                    ? "ABA KHQR"
-                    : selectedPaymentMethod === "card"
-                      ? "Credit/Debit Card"
-                      : selectedPaymentMethod === "alipay"
-                        ? "Alipay"
-                        : "WeChat"}
-                </div>
+                <div className="font-medium text-[#1F2937]">{getPaymentMethodDisplayName(selectedPaymentMethod)}</div>
                 <div className="text-sm text-[#6B7280]">
                   {currency} {amount.toFixed(2)}
                 </div>
@@ -322,18 +417,26 @@ export default function PayWayCheckout({
             </div>
           )}
 
-          {selectedPaymentMethod === "aba-khqr" && (
+          {(selectedPaymentMethod === "aba-khqr" || selectedPaymentMethod === "aba-deeplink") && (
             <div className="space-y-4">
               <div className="text-center p-8 bg-[#F8FFFE] rounded-lg border border-[#E0F2F1]">
                 <div className="w-48 h-48 mx-auto bg-white rounded-lg border-2 border-dashed border-[#005E7B] flex items-center justify-center mb-4">
                   <div className="text-[#005E7B] text-sm text-center">
                     PayWay will generate
                     <br />
-                    QR code here
+                    {selectedPaymentMethod === "aba-deeplink" ? "deeplink" : "QR code"} here
                   </div>
                 </div>
-                <p className="text-sm text-[#4A4A4A] mb-2">Scan this QR code with your banking app</p>
-                <p className="text-xs text-[#6B7280]">ABA Mobile, ACLEDA Mobile, or any KHQR compatible app</p>
+                <p className="text-sm text-[#4A4A4A] mb-2">
+                  {selectedPaymentMethod === "aba-deeplink"
+                    ? "This will open directly in your ABA Mobile app"
+                    : "Scan this QR code with your banking app"}
+                </p>
+                <p className="text-xs text-[#6B7280]">
+                  {selectedPaymentMethod === "aba-deeplink"
+                    ? "Make sure you have ABA Mobile app installed"
+                    : "ABA Mobile, ACLEDA Mobile, or any KHQR compatible app"}
+                </p>
               </div>
             </div>
           )}
@@ -348,6 +451,19 @@ export default function PayWayCheckout({
                 <Image src="/icons/mastercard.svg" alt="Mastercard" width={32} height={20} className="rounded-sm" />
                 <Image src="/icons/unionpay.svg" alt="UnionPay" width={32} height={20} className="rounded-sm" />
                 <Image src="/icons/jcb.svg" alt="JCB" width={24} height={20} className="rounded-sm" />
+              </div>
+            </div>
+          )}
+
+          {selectedPaymentMethod === "google_pay" && (
+            <div className="space-y-4">
+              <div className="p-4 bg-[#F8FFFE] rounded-lg border border-[#E0F2F1]">
+                <p className="text-sm text-[#4A4A4A] text-center">
+                  {isAndroid ? "Pay quickly with Google Pay" : "Google Pay will handle the payment"}
+                </p>
+              </div>
+              <div className="flex items-center justify-center">
+                <Image src="/icons/google-pay.svg" alt="Google Pay" width={64} height={32} className="rounded-sm" />
               </div>
             </div>
           )}
@@ -410,90 +526,54 @@ export default function PayWayCheckout({
 
         <div className="text-center mb-4">
           <h3 className="text-lg font-semibold text-[#1F2937] mb-2">Choose Payment Method</h3>
-          <p className="text-sm text-[#6B7280]">Powered by PayWay eCommerce Checkout</p>
+          <div className="flex items-center justify-center space-x-2 text-sm text-[#6B7280]">
+            <span>Powered by PayWay eCommerce Checkout</span>
+            {isMobile ? (
+              <div className="flex items-center space-x-1">
+                <Smartphone className="w-4 h-4" />
+                <span>Mobile</span>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-1">
+                <Monitor className="w-4 h-4" />
+                <span>Desktop</span>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="space-y-2">
-          <div
-            className={`flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-all ${
-              selectedPaymentMethod === "aba-khqr"
-                ? "border-[#005E7B] bg-[#F8FFFE]"
-                : "border-[#E5E7EB] hover:border-[#D1D5DB] bg-white"
-            }`}
-            onClick={() => setSelectedPaymentMethod("aba-khqr")}
-            onDoubleClick={() => handlePaymentMethodDoubleClick("aba-khqr")}
-          >
-            <div className="flex items-center space-x-4">
-              <Image src="/icons/aba-bank.svg" alt="ABA KHQR" width={40} height={40} className="rounded" />
-              <div>
-                <div className="font-medium text-[#1F2937] text-base">ABA KHQR</div>
-                <div className="text-sm text-[#6B7280]">Scan to pay with any banking app</div>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-[#9CA3AF]" />
-          </div>
-
-          <div
-            className={`flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-all ${
-              selectedPaymentMethod === "card"
-                ? "border-[#005E7B] bg-[#F8FFFE]"
-                : "border-[#E5E7EB] hover:border-[#D1D5DB] bg-white"
-            }`}
-            onClick={() => setSelectedPaymentMethod("card")}
-            onDoubleClick={() => handlePaymentMethodDoubleClick("card")}
-          >
-            <div className="flex items-center space-x-4">
-              <Image src="/icons/cards.svg" alt="Credit/Debit Cards" width={40} height={40} className="rounded" />
-              <div className="flex-1">
-                <div className="font-medium text-[#1F2937] text-base">Credit/Debit Card</div>
-                <div className="flex items-center space-x-2">
-                  <Image src="/icons/visa.svg" alt="Visa" width={32} height={20} className="rounded-sm" />
-                  <Image src="/icons/mastercard.svg" alt="Mastercard" width={32} height={20} className="rounded-sm" />
-                  <Image src="/icons/unionpay.svg" alt="UnionPay" width={32} height={20} className="rounded-sm" />
-                  <Image src="/icons/jcb.svg" alt="JCB" width={24} height={20} className="rounded-sm" />
+          {availablePaymentMethods.map((method) => (
+            <div
+              key={method.id}
+              className={`flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                selectedPaymentMethod === method.id
+                  ? "border-[#005E7B] bg-[#F8FFFE]"
+                  : "border-[#E5E7EB] hover:border-[#D1D5DB] bg-white"
+              }`}
+              onClick={() => setSelectedPaymentMethod(method.id)}
+              onDoubleClick={() => handlePaymentMethodDoubleClick(method.id)}
+            >
+              <div className="flex items-center space-x-4">
+                <Image src={`/icons/${method.icon}.svg`} alt={method.name} width={40} height={40} className="rounded" />
+                <div className="flex-1">
+                  <div className="font-medium text-[#1F2937] text-base">{method.name}</div>
+                  <div className="text-sm text-[#6B7280]">{method.description}</div>
+                  {method.deviceType === "preferred" && isAndroid && (
+                    <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 mt-1">
+                      Recommended for Android
+                    </div>
+                  )}
+                  {method.id === "aba-deeplink" && (
+                    <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800 mt-1">
+                      Mobile Only
+                    </div>
+                  )}
                 </div>
               </div>
+              <ChevronRight className="w-5 h-5 text-[#9CA3AF]" />
             </div>
-            <ChevronRight className="w-5 h-5 text-[#9CA3AF]" />
-          </div>
-
-          <div
-            className={`flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-all ${
-              selectedPaymentMethod === "alipay"
-                ? "border-[#005E7B] bg-[#F8FFFE]"
-                : "border-[#E5E7EB] hover:border-[#D1D5DB] bg-white"
-            }`}
-            onClick={() => setSelectedPaymentMethod("alipay")}
-            onDoubleClick={() => handlePaymentMethodDoubleClick("alipay")}
-          >
-            <div className="flex items-center space-x-4">
-              <Image src="/icons/alipay.svg" alt="Alipay" width={40} height={40} className="rounded" />
-              <div>
-                <div className="font-medium text-[#1F2937] text-base">Alipay</div>
-                <div className="text-sm text-[#6B7280]">Scan to pay with Alipay</div>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-[#9CA3AF]" />
-          </div>
-
-          <div
-            className={`flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-all ${
-              selectedPaymentMethod === "wechat"
-                ? "border-[#005E7B] bg-[#F8FFFE]"
-                : "border-[#E5E7EB] hover:border-[#D1D5DB] bg-white"
-            }`}
-            onClick={() => setSelectedPaymentMethod("wechat")}
-            onDoubleClick={() => handlePaymentMethodDoubleClick("wechat")}
-          >
-            <div className="flex items-center space-x-4">
-              <Image src="/icons/wechat.svg" alt="WeChat Pay" width={40} height={40} className="rounded" />
-              <div>
-                <div className="font-medium text-[#1F2937] text-base">WeChat</div>
-                <div className="text-sm text-[#6B7280]">Scan to pay with WeChat</div>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-[#9CA3AF]" />
-          </div>
+          ))}
         </div>
 
         <p className="text-xs text-[#6B7280] text-center leading-relaxed">
