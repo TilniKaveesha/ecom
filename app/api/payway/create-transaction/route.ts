@@ -83,18 +83,57 @@ export async function POST(request: NextRequest) {
           status: result.status,
         }
         return NextResponse.json(response)
-      } else {
-        // HTML payment methods (cards, alipay, wechat, google_pay) - provide direct checkout URL
-        const checkoutUrl = `https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase?tran_id=${result.transaction_ref}`
+      } else if (result.response_type === "html" && result.checkout_html) {
+        // HTML payment methods (cards, alipay, wechat, google_pay) - store HTML and provide access URL
+        try {
+          // Store the HTML content using the store-html endpoint
+          const storeResponse = await fetch(
+            `${process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000"}/api/payway/store-html`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                tran_id: result.transaction_ref,
+                html_content: result.checkout_html,
+              }),
+            },
+          )
 
-        const response = {
-          success: true,
-          tran_id: result.transaction_ref,
-          paymentType: "hosted",
-          checkoutUrl: checkoutUrl,
-          status: result.status,
+          if (!storeResponse.ok) {
+            throw new Error("Failed to store PayWay HTML content")
+          }
+
+          // Return the checkout HTML URL instead of direct PayWay URL
+          const checkoutUrl = `${process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000"}/api/payway/checkout-html?tran_id=${result.transaction_ref}`
+
+          const response = {
+            success: true,
+            tran_id: result.transaction_ref,
+            paymentType: "hosted",
+            checkoutUrl: checkoutUrl,
+            status: result.status,
+          }
+          return NextResponse.json(response)
+        } catch (storeError) {
+          console.error("Failed to store PayWay HTML:", storeError)
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Failed to prepare PayWay checkout page",
+            },
+            { status: 500 },
+          )
         }
-        return NextResponse.json(response)
+      } else {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Invalid PayWay response format",
+          },
+          { status: 500 },
+        )
       }
     } else {
       return NextResponse.json(

@@ -4,8 +4,9 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Loader2, ExternalLink, CreditCard, ChevronRight, ArrowLeft, Smartphone, Monitor } from "lucide-react"
+import { Loader2, CreditCard, ChevronRight, ArrowLeft, Smartphone, Monitor } from "lucide-react"
 import Image from "next/image"
+import PayWayIframe from "./payway-iframe"
 
 interface PaywayCheckoutProps {
   orderId: string
@@ -116,12 +117,12 @@ export default function PayWayCheckout({
   onCancel,
 }: PaywayCheckoutProps) {
   const [isLoading, setIsLoading] = useState(false)
-  const [paymentWindow, setPaymentWindow] = useState<Window | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [isWaitingForPayment, setIsWaitingForPayment] = useState(false)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("aba-khqr")
   const [showPaymentInterface, setShowPaymentInterface] = useState(false)
   const [transactionId, setTransactionId] = useState<string | null>(null)
+  const [showIframe, setShowIframe] = useState(false)
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
 
   const { isMobile, isIOS, isAndroid } = useDeviceDetection()
   const availablePaymentMethods = getAvailablePaymentMethods(isMobile, isIOS, isAndroid)
@@ -166,6 +167,7 @@ export default function PayWayCheckout({
         "https://checkout-sandbox.payway.com.kh",
         "https://api-sandbox.payway.com.kh",
         "https://sandbox.payway.com.kh",
+        window.location.origin, // Allow messages from our own domain
       ]
 
       if (!allowedOrigins.includes(event.origin)) {
@@ -176,68 +178,23 @@ export default function PayWayCheckout({
 
       switch (type) {
         case "PAYMENT_SUCCESS":
-          setIsWaitingForPayment(false)
+          setShowIframe(false)
           verifyPaymentStatus(data.tran_id || transactionId)
-          if (paymentWindow) {
-            paymentWindow.close()
-            setPaymentWindow(null)
-          }
           break
         case "PAYMENT_ERROR":
-          setIsWaitingForPayment(false)
+          setShowIframe(false)
           onError?.(data.error || "Payment failed")
-          if (paymentWindow) {
-            paymentWindow.close()
-            setPaymentWindow(null)
-          }
           break
         case "PAYMENT_CANCELLED":
-          setIsWaitingForPayment(false)
+          setShowIframe(false)
           onCancel?.()
-          if (paymentWindow) {
-            paymentWindow.close()
-            setPaymentWindow(null)
-          }
           break
       }
     }
 
     window.addEventListener("message", handleMessage)
     return () => window.removeEventListener("message", handleMessage)
-  }, [paymentWindow, onSuccess, onError, onCancel, transactionId, verifyPaymentStatus])
-
-  useEffect(() => {
-    const handlePaywayCallback = async (event: MessageEvent) => {
-      if (event.data?.type === "PAYWAY_CALLBACK") {
-        const { tran_id, status } = event.data.data
-
-        if (status === "0") {
-          // Payment successful - verify with Check Transaction API
-          await verifyPaymentStatus(tran_id)
-        } else {
-          onError?.("Payment was not successful")
-        }
-      }
-    }
-
-    window.addEventListener("message", handlePaywayCallback)
-    return () => window.removeEventListener("message", handlePaywayCallback)
-  }, [onError, verifyPaymentStatus])
-
-  useEffect(() => {
-    if (!paymentWindow || !isWaitingForPayment) return
-
-    const checkClosed = setInterval(() => {
-      if (paymentWindow.closed) {
-        setIsWaitingForPayment(false)
-        setPaymentWindow(null)
-        onCancel?.()
-        clearInterval(checkClosed)
-      }
-    }, 1000)
-
-    return () => clearInterval(checkClosed)
-  }, [paymentWindow, isWaitingForPayment, onCancel])
+  }, [onSuccess, onError, onCancel, transactionId, verifyPaymentStatus])
 
   const handlePaywayCheckout = async () => {
     setIsLoading(true)
@@ -275,38 +232,12 @@ export default function PayWayCheckout({
       if (result.success) {
         setTransactionId(result.tran_id)
 
-        if (result.paymentType === "qr" && (result.qr_string || result.checkout_qr_url)) {
-          if (result.checkout_qr_url) {
-            const newWindow = window.open(
-              result.checkout_qr_url,
-              "payway-checkout",
-              "width=800,height=600,scrollbars=yes,resizable=yes,status=yes,location=yes,menubar=no,toolbar=no",
-            )
-
-            if (newWindow) {
-              setPaymentWindow(newWindow)
-              setIsWaitingForPayment(true)
-              newWindow.focus()
-            } else {
-              throw new Error("Popup blocked. Please allow popups for this site.")
-            }
-          }
+        if (result.paymentType === "qr" && result.checkout_qr_url) {
+          setCheckoutUrl(result.checkout_qr_url)
+          setShowIframe(true)
         } else if (result.paymentType === "hosted" && result.checkoutUrl) {
-          const newWindow = window.open(
-            result.checkoutUrl,
-            "payway-checkout",
-            "width=800,height=600,scrollbars=yes,resizable=yes,status=yes,location=yes,menubar=no,toolbar=no",
-          )
-
-          if (newWindow) {
-            setPaymentWindow(newWindow)
-            setIsWaitingForPayment(true)
-            newWindow.focus()
-
-            console.log("[v0] PayWay checkout opened via direct URL")
-          } else {
-            throw new Error("Popup blocked. Please allow popups for this site.")
-          }
+          setCheckoutUrl(result.checkoutUrl)
+          setShowIframe(true)
         } else {
           throw new Error("Invalid PayWay response format")
         }
@@ -325,11 +256,8 @@ export default function PayWayCheckout({
   }
 
   const handleCancel = () => {
-    if (paymentWindow) {
-      paymentWindow.close()
-      setPaymentWindow(null)
-    }
-    setIsWaitingForPayment(false)
+    setShowIframe(false)
+    setCheckoutUrl(null)
     setError(null)
     onCancel?.()
   }
@@ -354,36 +282,23 @@ export default function PayWayCheckout({
     return method?.name || methodId
   }
 
-  if (isWaitingForPayment) {
+  if (showIframe && checkoutUrl) {
     return (
-      <div className="w-full max-w-md mx-auto bg-white rounded-lg shadow-sm border border-gray-100">
-        <div className="p-6 space-y-4 text-center">
-          <div className="flex items-center justify-center space-x-2">
-            <Loader2 className="w-4 h-4 animate-spin text-[#005E7B]" />
-            <span className="text-[#4A4A4A]">Waiting for payment completion...</span>
-          </div>
-          <div className="p-4 bg-[#F8FFFE] rounded-lg border border-[#E0F2F1]">
-            <p className="text-sm text-[#4A4A4A]">
-              Please complete your payment in the PayWay window that opened. Don&apos;t close this page until payment is
-              complete.
-            </p>
-            {transactionId && <p className="text-xs text-[#6B7280] mt-2">Transaction ID: {transactionId}</p>}
-          </div>
-          <div className="flex space-x-2">
-            <Button
-              variant="outline"
-              onClick={() => paymentWindow?.focus()}
-              className="flex-1 border-[#005E7B] text-[#005E7B] hover:bg-[#005E7B] hover:text-white"
-            >
-              <ExternalLink className="w-4 h-4 mr-2" />
-              Focus Payment Window
-            </Button>
-            <Button variant="outline" onClick={handleCancel} className="flex-1 bg-transparent">
-              Cancel Payment
-            </Button>
-          </div>
-        </div>
-      </div>
+      <PayWayIframe
+        checkoutUrl={checkoutUrl}
+        onPaymentComplete={(result) => {
+          setShowIframe(false)
+          verifyPaymentStatus(result.tran_id || transactionId)
+        }}
+        onPaymentError={(error) => {
+          setShowIframe(false)
+          onError?.(error.error || "Payment failed")
+        }}
+        onClose={() => {
+          setShowIframe(false)
+          onCancel?.()
+        }}
+      />
     )
   }
 
