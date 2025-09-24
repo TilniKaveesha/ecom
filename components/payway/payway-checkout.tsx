@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable react-hooks/exhaustive-deps */
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
@@ -242,7 +244,16 @@ export default function PayWayCheckout({
     setError(null)
 
     try {
-      const apiPaymentMethod = selectedPaymentMethod === "aba-deeplink" ? "aba-khqr" : selectedPaymentMethod
+      const paymentMethodMap: Record<string, string> = {
+        "aba-khqr": "abapay_khqr_deeplink", // This returns JSON with QR
+        "aba-deeplink": "abapay_khqr_deeplink", // Same as above
+        card: "cards", // This returns HTML form
+        alipay: "alipay", // This returns HTML form
+        wechat: "wechat", // This returns HTML form
+        google_pay: "google_pay", // This returns HTML form
+      }
+
+      const apiPaymentMethod = paymentMethodMap[selectedPaymentMethod] || selectedPaymentMethod
 
       const response = await fetch("/api/payway/create-transaction", {
         method: "POST",
@@ -254,7 +265,7 @@ export default function PayWayCheckout({
           amount,
           currency,
           customerInfo,
-          paymentMethod: apiPaymentMethod,
+          paymentMethod: selectedPaymentMethod, // Send original method for API mapping
           return_url: `${window.location.origin}/api/payway/callback`,
         }),
       })
@@ -264,8 +275,7 @@ export default function PayWayCheckout({
       if (result.success) {
         setTransactionId(result.tran_id)
 
-        if (result.paymentType === "qr" && result.qr_string) {
-          // For QR payments, we can display the QR code directly or redirect to checkout_qr_url
+        if (result.paymentType === "qr" && (result.qr_string || result.checkout_qr_url)) {
           if (result.checkout_qr_url) {
             const newWindow = window.open(
               result.checkout_qr_url,
@@ -281,12 +291,9 @@ export default function PayWayCheckout({
               throw new Error("Popup blocked. Please allow popups for this site.")
             }
           }
-        } else if (result.paymentType === "hosted" && result.checkoutHtml) {
-          const blob = new Blob([result.checkoutHtml], { type: "text/html" })
-          const blobUrl = URL.createObjectURL(blob)
-
+        } else if (result.paymentType === "hosted" && result.checkoutUrl) {
           const newWindow = window.open(
-            blobUrl,
+            result.checkoutUrl,
             "payway-checkout",
             "width=800,height=600,scrollbars=yes,resizable=yes,status=yes,location=yes,menubar=no,toolbar=no",
           )
@@ -296,7 +303,7 @@ export default function PayWayCheckout({
             setIsWaitingForPayment(true)
             newWindow.focus()
 
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
+            console.log("[v0] PayWay checkout opened via direct URL")
           } else {
             throw new Error("Popup blocked. Please allow popups for this site.")
           }

@@ -42,16 +42,18 @@ export async function POST(request: NextRequest) {
 
     // Map payment method to PayWay payment_option
     const paymentOptionMap: Record<string, string> = {
-      "aba-khqr": "abapay_khqr_deeplink",
-      card: "cards",
-      alipay: "alipay",
-      wechat: "wechat",
-      google_pay: "google_pay",
+      "aba-khqr": "abapay_khqr_deeplink", // Returns JSON with QR data
+      "aba-deeplink": "abapay_khqr_deeplink", // Same as above
+      card: "cards", // Returns HTML checkout form
+      alipay: "alipay", // Returns HTML checkout form
+      wechat: "wechat", // Returns HTML checkout form
+      google_pay: "google_pay", // Returns HTML checkout form
     }
 
     const payment_option = paymentOptionMap[paymentMethod] || ""
 
     console.log("Creating PayWay order with payment option:", payment_option)
+    console.log("Original payment method:", paymentMethod)
 
     // Create PayWay order using existing library
     const result = await payway.createOrder(
@@ -69,22 +71,31 @@ export async function POST(request: NextRequest) {
 
     if (result.success) {
       // Format response based on result type
-      const response = {
-        success: true,
-        tran_id: result.transaction_ref,
-        paymentType: result.response_type === "json" ? "qr" : "hosted",
-        ...(result.response_type === "json" && {
+      if (result.response_type === "json") {
+        // QR payment methods (ABA KHQR) - return JSON data
+        const response = {
+          success: true,
+          tran_id: result.transaction_ref,
+          paymentType: "qr",
           qr_string: result.qr_string,
           abapay_deeplink: result.abapay_deeplink,
           checkout_qr_url: result.checkout_url,
-        }),
-        ...(result.response_type === "html" && {
-          checkoutHtml: result.checkout_html,
-        }),
-        status: result.status,
-      }
+          status: result.status,
+        }
+        return NextResponse.json(response)
+      } else {
+        // HTML payment methods (cards, alipay, wechat, google_pay) - provide direct checkout URL
+        const checkoutUrl = `https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase?tran_id=${result.transaction_ref}`
 
-      return NextResponse.json(response)
+        const response = {
+          success: true,
+          tran_id: result.transaction_ref,
+          paymentType: "hosted",
+          checkoutUrl: checkoutUrl,
+          status: result.status,
+        }
+        return NextResponse.json(response)
+      }
     } else {
       return NextResponse.json(
         {
@@ -120,6 +131,6 @@ export async function GET() {
     supported_methods: ["POST"],
     required_fields: ["orderId", "amount", "customerInfo"],
     optional_fields: ["currency", "paymentMethod", "return_url"],
-    supported_payment_methods: ["aba-khqr", "card", "alipay", "wechat", "google_pay"],
+    supported_payment_methods: ["aba-khqr", "aba-deeplink", "card", "alipay", "wechat", "google_pay"],
   })
 }
