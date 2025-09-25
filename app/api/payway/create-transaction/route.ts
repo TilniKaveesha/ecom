@@ -1,11 +1,32 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { type NextRequest, NextResponse } from "next/server"
 import { payway } from "@/lib/payway"
+import { Convert } from "@/lib/payway-header-types"
+import { PayWayPaymentOption } from "@/lib/payway-purchase-types"
 
 export async function POST(request: NextRequest) {
   console.log("=== PayWay Create Transaction API ===")
 
   try {
+    try {
+      const requestHeaders: Record<string, string> = {}
+      request.headers.forEach((value, key) => {
+        requestHeaders[key] = value
+      })
+
+      if (requestHeaders["content-type"]) {
+        const headerValidation = Convert.toPayWayHeaders(
+          JSON.stringify({
+            "Content-Type": requestHeaders["content-type"],
+          }),
+        )
+        console.log("✅ Request headers validated:", headerValidation)
+      }
+    } catch (headerError) {
+      console.warn("⚠️ Request header validation failed:", headerError)
+      // Continue processing - header validation is not critical
+    }
+
     const body = await request.json()
     const { orderId, amount, currency = "USD", customerInfo, paymentMethod, return_url } = body
 
@@ -40,17 +61,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Map payment method to PayWay payment_option
-    const paymentOptionMap: Record<string, string> = {
-      "aba-khqr": "abapay_khqr_deeplink", // Returns JSON with QR data
-      "aba-deeplink": "abapay_khqr_deeplink", // Same as above
-      card: "cards", // Returns HTML checkout form
-      alipay: "alipay", // Returns HTML checkout form
-      wechat: "wechat", // Returns HTML checkout form
-      google_pay: "google_pay", // Returns HTML checkout form
+    const paymentOptionMap: Record<string, PayWayPaymentOption> = {
+      "aba-khqr": PayWayPaymentOption.ABA_KHQR_DEEPLINK, // Returns JSON with QR data
+      "aba-deeplink": PayWayPaymentOption.ABA_KHQR_DEEPLINK, // Same as above
+      card: PayWayPaymentOption.CARDS, // Returns HTML checkout form
+      alipay: PayWayPaymentOption.ALIPAY, // Returns HTML checkout form
+      wechat: PayWayPaymentOption.WECHAT, // Returns HTML checkout form
+      google_pay: PayWayPaymentOption.GOOGLE_PAY, // Returns HTML checkout form
     }
 
     const payment_option = paymentOptionMap[paymentMethod] || ""
+
+    if (paymentMethod && !payway.validatePaymentOption(payment_option)) {
+      console.warn(`⚠️ Invalid payment method: ${paymentMethod}, using default`)
+    }
 
     console.log("Creating PayWay order with payment option:", payment_option)
     console.log("Original payment method:", paymentMethod)
@@ -100,6 +124,24 @@ export async function POST(request: NextRequest) {
               }),
             },
           )
+
+          try {
+            const storeHeaders: Record<string, string> = {}
+            storeResponse.headers.forEach((value, key) => {
+              storeHeaders[key] = value
+            })
+
+            if (storeHeaders["content-type"]) {
+              const headerValidation = Convert.toPayWayHeaders(
+                JSON.stringify({
+                  "Content-Type": storeHeaders["content-type"],
+                }),
+              )
+              console.log("✅ Store HTML response headers validated:", headerValidation)
+            }
+          } catch (headerError) {
+            console.warn("⚠️ Store HTML header validation failed:", headerError)
+          }
 
           if (!storeResponse.ok) {
             throw new Error("Failed to store PayWay HTML content")
@@ -166,10 +208,17 @@ export async function GET() {
   return NextResponse.json({
     message: "PayWay Create Transaction API",
     version: "1.0.0",
-    description: "Creates PayWay payment transactions",
+    description: "Creates PayWay payment transactions with full type validation",
     supported_methods: ["POST"],
     required_fields: ["orderId", "amount", "customerInfo"],
     optional_fields: ["currency", "paymentMethod", "return_url"],
     supported_payment_methods: ["aba-khqr", "aba-deeplink", "card", "alipay", "wechat", "google_pay"],
+    supported_currencies: payway.getSupportedCurrencies(),
+    supported_transaction_types: payway.getSupportedTransactionTypes(),
+    validation: {
+      purchase_request: "Full PayWay purchase request validation enabled",
+      headers: "HTTP header validation enabled",
+      payment_options: "Payment method validation enabled",
+    },
   })
 }

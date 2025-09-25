@@ -13,6 +13,7 @@ interface PayWayIframeProps {
 export default function PayWayIframe({ checkoutUrl, onPaymentComplete, onPaymentError, onClose }: PayWayIframeProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -30,10 +31,14 @@ export default function PayWayIframe({ checkoutUrl, onPaymentComplete, onPayment
       console.log("[PayWay] Received message:", event.data)
 
       if (event.data?.type === "PAYMENT_SUCCESS") {
+        setIsLoading(false)
         onPaymentComplete?.(event.data.data)
       } else if (event.data?.type === "PAYMENT_ERROR") {
+        setIsLoading(false)
+        setError(event.data.data?.error || "Payment failed")
         onPaymentError?.(event.data.data)
       } else if (event.data?.type === "PAYMENT_CANCELLED") {
+        setIsLoading(false)
         onClose?.()
       }
     }
@@ -44,6 +49,12 @@ export default function PayWayIframe({ checkoutUrl, onPaymentComplete, onPayment
 
   const handleIframeLoad = () => {
     setIsLoading(false)
+    setError(null)
+  }
+
+  const handleIframeError = () => {
+    setIsLoading(false)
+    setError("Failed to load payment page. Please try again.")
   }
 
   return (
@@ -65,13 +76,29 @@ export default function PayWayIframe({ checkoutUrl, onPaymentComplete, onPayment
           </div>
         )}
 
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-95">
+            <div className="text-center p-6">
+              <div className="text-red-500 text-6xl mb-4">⚠️</div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">Payment Error</h3>
+              <p className="text-gray-600 mb-4">{error}</p>
+              <button onClick={onClose} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+
         <iframe
           ref={iframeRef}
           src={checkoutUrl}
           className="w-full h-[calc(100%-60px)] border-0"
           onLoad={handleIframeLoad}
-          sandbox="allow-scripts allow-forms allow-same-origin allow-top-navigation allow-popups"
+          onError={handleIframeError}
+          sandbox="allow-scripts allow-forms allow-top-navigation allow-popups"
           title="PayWay Checkout"
+          allow="payment; encrypted-media"
+          referrerPolicy="strict-origin-when-cross-origin"
         />
       </div>
     </div>

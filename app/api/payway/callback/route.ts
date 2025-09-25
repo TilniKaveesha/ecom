@@ -1,10 +1,31 @@
 import { type NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { verifyPayWayPayment } from "@/lib/actions/order.actions"
+import { type PayWayCallbackResponse, PayWayStatus } from "@/lib/payway-response-types"
+import { Convert } from "@/lib/payway-header-types"
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
+    try {
+      const requestHeaders: Record<string, string> = {}
+      request.headers.forEach((value, key) => {
+        requestHeaders[key] = value
+      })
+
+      if (requestHeaders["content-type"]) {
+        const headerValidation = Convert.toPayWayHeaders(
+          JSON.stringify({
+            "Content-Type": requestHeaders["content-type"],
+          }),
+        )
+        console.log("✅ PayWay callback headers validated:", headerValidation)
+      }
+    } catch (headerError) {
+      console.warn("⚠️ PayWay callback header validation failed:", headerError)
+      // Continue processing - header validation is not critical for webhook functionality
+    }
+
+    const body: PayWayCallbackResponse = await request.json()
     console.log("PayWay Callback received:", body)
 
     // PayWay typically sends signature in headers or body
@@ -43,12 +64,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    // Handle different PayWay status values
-    if (status === "completed" || status === "success" || status === "paid") {
+    if (
+      body.status === PayWayStatus.COMPLETED ||
+      body.status === PayWayStatus.SUCCESS ||
+      body.status === PayWayStatus.PAID
+    ) {
       console.log("Payment successful, verifying order:", orderId)
       await verifyPayWayPayment(orderId, tran_id)
-    } else if (status === "failed" || status === "cancelled") {
-      console.log("Payment failed/cancelled:", { orderId, status })
+    } else if (body.status === PayWayStatus.FAILED || body.status === PayWayStatus.CANCELLED) {
+      console.log("Payment failed/cancelled:", { orderId, status: body.status })
       // Handle failed payment if needed
     }
 

@@ -309,8 +309,8 @@ export default function PayWayCheckout({
         <div className="text-center mb-4">
           <h3 className="text-lg font-semibold text-[#1F2937] mb-2">Choose Payment Method</h3>
           <div className="flex items-center justify-center space-x-2 text-sm text-[#6B7280]">
-            <span>Powered by PayWay eCommerce Checkout</span>
-            {isMobile ? (
+            
+            {/*isMobile ? (
               <div className="flex items-center space-x-1">
                 <Smartphone className="w-4 h-4" />
                 <span>Mobile</span>
@@ -320,7 +320,7 @@ export default function PayWayCheckout({
                 <Monitor className="w-4 h-4" />
                 <span>Desktop</span>
               </div>
-            )}
+            )*/}
           </div>
         </div>
 
@@ -341,7 +341,7 @@ export default function PayWayCheckout({
                   <div className="font-medium text-[#1F2937] text-base">{method.name}</div>
                   {/* Show description normally, but replace with card icons if method is "card" */}
     {method.id === "card" ? (
-      <div className="flex items-center space-x-1 mt-1">
+      <div className="flex items-center space-x-2 mt-1">
         <Image src="/icons/visa.svg" alt="Visa" width={32} height={20} className="rounded-sm" />
         <Image src="/icons/mastercard.svg" alt="Mastercard" width={32} height={20} className="rounded-sm" />
         <Image src="/icons/unionpay.svg" alt="UnionPay" width={32} height={20} className="rounded-sm" />

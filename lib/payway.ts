@@ -1,5 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import crypto from "crypto"
+import { Convert } from "./payway-header-types"
+import {
+  type PayWayPurchaseRequest,
+  PayWayPaymentOption,
+  PayWayTransactionType,
+  PayWayCurrency,
+  Convert as PurchaseConvert,
+} from "./payway-purchase-types"
 
 // PayWay Status Codes - Master list with string keys
 const PAYWAY_STATUS_CODES: Record<string, string> = {
@@ -264,6 +272,45 @@ export const payway = {
     console.log("Generated hash:", hash)
     console.log("Hash string length:", hashString.length)
 
+    const purchaseRequest: PayWayPurchaseRequest = {
+      req_time,
+      merchant_id,
+      tran_id,
+      amount: Number.parseFloat(amount),
+      currency,
+      items,
+      shipping: Number.parseFloat(shipping),
+      firstname,
+      lastname,
+      email,
+      phone,
+      type,
+      payment_option,
+      return_url,
+      cancel_url,
+      continue_success_url,
+      return_deeplink,
+      custom_fields,
+      return_params,
+      view_type,
+      payment_gate: Number.parseInt(payment_gate),
+      payout,
+      lifetime: Number.parseInt(lifetime),
+      additional_params,
+      google_pay_token,
+      skip_success_page: Number.parseInt(skip_success_page),
+      hash,
+    }
+
+    try {
+      const validatedRequest = PurchaseConvert.toPayWayPurchaseRequest(JSON.stringify(purchaseRequest))
+      console.log("✅ PayWay purchase request validated successfully")
+      console.log("Validated request fields:", Object.keys(validatedRequest).length)
+    } catch (validationError) {
+      console.warn("⚠️ PayWay purchase request validation failed:", validationError)
+      // Continue processing - validation is for debugging purposes
+    }
+
     const formData = new FormData()
     formData.append("req_time", req_time)
     formData.append("merchant_id", merchant_id)
@@ -310,6 +357,26 @@ export const payway = {
       console.log("=== PayWay Purchase API Response ===")
       console.log("Status:", response.status)
       console.log("Content-Type:", response.headers.get("content-type"))
+
+      try {
+        const responseHeaders: Record<string, string> = {}
+        response.headers.forEach((value, key) => {
+          responseHeaders[key] = value
+        })
+
+        // Validate Content-Type header if present
+        if (responseHeaders["content-type"]) {
+          const headerValidation = Convert.toPayWayHeaders(
+            JSON.stringify({
+              "Content-Type": responseHeaders["content-type"],
+            }),
+          )
+          console.log("✅ PayWay response headers validated:", headerValidation)
+        }
+      } catch (headerError) {
+        console.warn("⚠️ PayWay response header validation failed:", headerError)
+        // Continue processing - header validation is not critical for functionality
+      }
 
       if (response.ok) {
         const contentType = response.headers.get("content-type")
@@ -417,7 +484,6 @@ export const payway = {
     }
   },
 
-  // Specific method for QR payments that return JSON
   createQRPayment: async function createQRPayment(
     price: number,
     orderId: string,
@@ -426,7 +492,7 @@ export const payway = {
       email: string
       phone: string
     },
-    paymentOption: "abapay" | "abapay_khqr" | "abapay_khqr_deeplink" | "wechat" | "alipay" = "abapay_khqr_deeplink",
+    paymentOption: PayWayPaymentOption = PayWayPaymentOption.ABA_KHQR_DEEPLINK,
   ) {
     return this.createOrder(price, orderId, customerInfo, paymentOption)
   },
@@ -451,6 +517,24 @@ export const payway = {
         body: formData,
       })
 
+      try {
+        const responseHeaders: Record<string, string> = {}
+        response.headers.forEach((value, key) => {
+          responseHeaders[key] = value
+        })
+
+        if (responseHeaders["content-type"]) {
+          const headerValidation = Convert.toPayWayHeaders(
+            JSON.stringify({
+              "Content-Type": responseHeaders["content-type"],
+            }),
+          )
+          console.log("✅ Transaction details headers validated:", headerValidation)
+        }
+      } catch (headerError) {
+        console.warn("⚠️ Transaction details header validation failed:", headerError)
+      }
+
       if (response.ok) {
         const result = await response.json()
         const statusCode = result.status?.code
@@ -472,6 +556,21 @@ export const payway = {
       console.error("PayWay getTransactionDetails error:", error)
       throw error
     }
+  },
+
+  // Helper method to validate payment options
+  validatePaymentOption: function validatePaymentOption(option: string): boolean {
+    return Object.values(PayWayPaymentOption).includes(option as PayWayPaymentOption)
+  },
+
+  // Helper method to get supported currencies
+  getSupportedCurrencies: function getSupportedCurrencies(): string[] {
+    return Object.values(PayWayCurrency)
+  },
+
+  // Helper method to get supported transaction types
+  getSupportedTransactionTypes: function getSupportedTransactionTypes(): string[] {
+    return Object.values(PayWayTransactionType)
   },
 
   // Helper methods
