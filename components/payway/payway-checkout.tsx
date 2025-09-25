@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Loader2, CreditCard, ChevronRight, ArrowLeft, Smartphone, Monitor } from "lucide-react"
+import { Loader2, ChevronRight, Smartphone, Monitor } from "lucide-react"
 import Image from "next/image"
 import PayWayIframe from "./payway-iframe"
 
@@ -196,7 +196,8 @@ export default function PayWayCheckout({
     return () => window.removeEventListener("message", handleMessage)
   }, [onSuccess, onError, onCancel, transactionId, verifyPaymentStatus])
 
-  const handlePaywayCheckout = async () => {
+  const handlePaymentMethodClick = async (method: string) => {
+    setSelectedPaymentMethod(method)
     setIsLoading(true)
     setError(null)
 
@@ -210,7 +211,7 @@ export default function PayWayCheckout({
         google_pay: "google_pay", // This returns HTML form
       }
 
-      const apiPaymentMethod = paymentMethodMap[selectedPaymentMethod] || selectedPaymentMethod
+      const apiPaymentMethod = paymentMethodMap[method] || method
 
       const response = await fetch("/api/payway/create-transaction", {
         method: "POST",
@@ -222,7 +223,7 @@ export default function PayWayCheckout({
           amount,
           currency,
           customerInfo,
-          paymentMethod: selectedPaymentMethod, // Send original method for API mapping
+          paymentMethod: method, // Send original method for API mapping
           return_url: `${window.location.origin}/api/payway/callback`,
         }),
       })
@@ -264,17 +265,7 @@ export default function PayWayCheckout({
 
   const handleRetry = () => {
     setError(null)
-    handlePaywayCheckout()
-  }
-
-  const handlePaymentMethodDoubleClick = (method: string) => {
-    setSelectedPaymentMethod(method)
-    setShowPaymentInterface(true)
-  }
-
-  const handleBackToSelection = () => {
-    setShowPaymentInterface(false)
-    setError(null)
+    handlePaymentMethodClick(selectedPaymentMethod)
   }
 
   const getPaymentMethodDisplayName = (methodId: string) => {
@@ -299,137 +290,6 @@ export default function PayWayCheckout({
           onCancel?.()
         }}
       />
-    )
-  }
-
-  if (showPaymentInterface) {
-    const selectedMethod = availablePaymentMethods.find((m) => m.id === selectedPaymentMethod)
-
-    return (
-      <div className="w-full max-w-md mx-auto bg-white rounded-lg shadow-sm border border-gray-100">
-        <div className="p-6 space-y-4">
-          <div className="flex items-center space-x-3">
-            <Button variant="ghost" size="sm" onClick={handleBackToSelection} className="p-2 hover:bg-gray-100">
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-            <div className="flex items-center space-x-3">
-              <Image
-                src={`/icons/${selectedMethod?.icon || selectedPaymentMethod}.svg`}
-                alt={selectedMethod?.name || selectedPaymentMethod}
-                width={32}
-                height={32}
-                className="rounded"
-              />
-              <div>
-                <div className="font-medium text-[#1F2937]">{getPaymentMethodDisplayName(selectedPaymentMethod)}</div>
-                <div className="text-sm text-[#6B7280]">
-                  {currency} {amount.toFixed(2)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {error && (
-            <div className="p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg">
-              <div className="font-medium mb-2">Payment Error</div>
-              <div className="mb-3">{error}</div>
-              <Button variant="outline" onClick={handleRetry} size="sm" className="w-full bg-transparent">
-                Try Again
-              </Button>
-            </div>
-          )}
-
-          {(selectedPaymentMethod === "aba-khqr" || selectedPaymentMethod === "aba-deeplink") && (
-            <div className="space-y-4">
-              <div className="text-center p-8 bg-[#F8FFFE] rounded-lg border border-[#E0F2F1]">
-                <div className="w-48 h-48 mx-auto bg-white rounded-lg border-2 border-dashed border-[#005E7B] flex items-center justify-center mb-4">
-                  <div className="text-[#005E7B] text-sm text-center">
-                    PayWay will generate
-                    <br />
-                    {selectedPaymentMethod === "aba-deeplink" ? "deeplink" : "QR code"} here
-                  </div>
-                </div>
-                <p className="text-sm text-[#4A4A4A] mb-2">
-                  {selectedPaymentMethod === "aba-deeplink"
-                    ? "This will open directly in your ABA Mobile app"
-                    : "Scan this QR code with your banking app"}
-                </p>
-                <p className="text-xs text-[#6B7280]">
-                  {selectedPaymentMethod === "aba-deeplink"
-                    ? "Make sure you have ABA Mobile app installed"
-                    : "ABA Mobile, ACLEDA Mobile, or any KHQR compatible app"}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {selectedPaymentMethod === "card" && (
-            <div className="space-y-4">
-              <div className="p-4 bg-[#F8FFFE] rounded-lg border border-[#E0F2F1]">
-                <p className="text-sm text-[#4A4A4A] text-center">PayWay will handle secure card processing</p>
-              </div>
-              <div className="flex items-center space-x-2 justify-center">
-                <Image src="/icons/visa.svg" alt="Visa" width={32} height={20} className="rounded-sm" />
-                <Image src="/icons/mastercard.svg" alt="Mastercard" width={32} height={20} className="rounded-sm" />
-                <Image src="/icons/unionpay.svg" alt="UnionPay" width={32} height={20} className="rounded-sm" />
-                <Image src="/icons/jcb.svg" alt="JCB" width={24} height={20} className="rounded-sm" />
-              </div>
-            </div>
-          )}
-
-          {selectedPaymentMethod === "google_pay" && (
-            <div className="space-y-4">
-              <div className="p-4 bg-[#F8FFFE] rounded-lg border border-[#E0F2F1]">
-                <p className="text-sm text-[#4A4A4A] text-center">
-                  {isAndroid ? "Pay quickly with Google Pay" : "Google Pay will handle the payment"}
-                </p>
-              </div>
-              <div className="flex items-center justify-center">
-                <Image src="/icons/google-pay.svg" alt="Google Pay" width={64} height={32} className="rounded-sm" />
-              </div>
-            </div>
-          )}
-
-          {(selectedPaymentMethod === "alipay" || selectedPaymentMethod === "wechat") && (
-            <div className="space-y-4">
-              <div className="text-center p-8 bg-[#F8FFFE] rounded-lg border border-[#E0F2F1]">
-                <div className="w-48 h-48 mx-auto bg-white rounded-lg border-2 border-dashed border-[#005E7B] flex items-center justify-center mb-4">
-                  <div className="text-[#005E7B] text-sm text-center">
-                    PayWay will generate
-                    <br />
-                    QR code here
-                  </div>
-                </div>
-                <p className="text-sm text-[#4A4A4A] mb-2">
-                  Scan this QR code with your {selectedPaymentMethod === "alipay" ? "Alipay" : "WeChat"} app
-                </p>
-                <p className="text-xs text-[#6B7280]">
-                  Open {selectedPaymentMethod === "alipay" ? "Alipay" : "WeChat Pay"} and scan to complete payment
-                </p>
-              </div>
-            </div>
-          )}
-
-          <Button
-            onClick={handlePaywayCheckout}
-            disabled={isLoading}
-            className="w-full bg-[#005E7B] hover:bg-[#004A63] text-white font-medium py-3 rounded-lg transition-colors shadow-sm"
-            size="lg"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Creating PayWay Transaction...
-              </>
-            ) : (
-              <>
-                <CreditCard className="w-4 h-4 mr-2" />
-                Pay with PayWay
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
     )
   }
 
@@ -472,15 +332,25 @@ export default function PayWayCheckout({
                 selectedPaymentMethod === method.id
                   ? "border-[#005E7B] bg-[#F8FFFE]"
                   : "border-[#E5E7EB] hover:border-[#D1D5DB] bg-white"
-              }`}
-              onClick={() => setSelectedPaymentMethod(method.id)}
-              onDoubleClick={() => handlePaymentMethodDoubleClick(method.id)}
+              } ${isLoading ? "opacity-50 pointer-events-none" : ""}`}
+              onClick={() => handlePaymentMethodClick(method.id)}
             >
               <div className="flex items-center space-x-4">
                 <Image src={`/icons/${method.icon}.svg`} alt={method.name} width={40} height={40} className="rounded" />
                 <div className="flex-1">
                   <div className="font-medium text-[#1F2937] text-base">{method.name}</div>
-                  <div className="text-sm text-[#6B7280]">{method.description}</div>
+                  {/* Show description normally, but replace with card icons if method is "card" */}
+    {method.id === "card" ? (
+      <div className="flex items-center space-x-1 mt-1">
+        <Image src="/icons/visa.svg" alt="Visa" width={32} height={20} className="rounded-sm" />
+        <Image src="/icons/mastercard.svg" alt="Mastercard" width={32} height={20} className="rounded-sm" />
+        <Image src="/icons/unionpay.svg" alt="UnionPay" width={32} height={20} className="rounded-sm" />
+        <Image src="/icons/jcb.svg" alt="JCB" width={24} height={20} className="rounded-sm" />
+      </div>
+    ) : (
+      <div className="text-sm text-[#6B7280]">{method.description}</div>
+    )}
+
                   {method.deviceType === "preferred" && isAndroid && (
                     <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 mt-1">
                       Recommended for Android
@@ -493,13 +363,17 @@ export default function PayWayCheckout({
                   )}
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-[#9CA3AF]" />
+              {isLoading && selectedPaymentMethod === method.id ? (
+                <Loader2 className="w-5 h-5 text-[#005E7B] animate-spin" />
+              ) : (
+                <ChevronRight className="w-5 h-5 text-[#9CA3AF]" />
+              )}
             </div>
           ))}
         </div>
 
         <p className="text-xs text-[#6B7280] text-center leading-relaxed">
-          Double-click on a payment method to proceed with payment.
+          Click on a payment method to open PayWay checkout directly.
         </p>
       </div>
     </div>
