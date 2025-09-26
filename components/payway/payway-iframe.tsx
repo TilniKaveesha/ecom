@@ -48,14 +48,31 @@ export default function PayWayIframe({ checkoutUrl, onPaymentComplete, onPayment
   }, [onPaymentComplete, onPaymentError, onClose])
 
   const handleIframeLoad = () => {
+    console.log("[v0] Iframe loaded successfully")
     setIsLoading(false)
     setError(null)
   }
 
   const handleIframeError = () => {
+    console.log("[v0] Iframe failed to load")
     setIsLoading(false)
     setError("Failed to load payment page. Please try again.")
   }
+
+  useEffect(() => {
+    console.log("[v0] PayWay iframe mounting with URL:", checkoutUrl)
+
+    // Add a timeout to detect if iframe never loads
+    const loadTimeout = setTimeout(() => {
+      if (isLoading) {
+        console.log("[v0] Iframe load timeout - content may not be displaying")
+        setError("Payment page is taking too long to load. Please try again.")
+        setIsLoading(false)
+      }
+    }, 15000) // 15 second timeout
+
+    return () => clearTimeout(loadTimeout)
+  }, [checkoutUrl, isLoading])
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -72,6 +89,9 @@ export default function PayWayIframe({ checkoutUrl, onPaymentComplete, onPayment
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
               <p className="text-gray-600">Loading PayWay checkout...</p>
+              {process.env.NODE_ENV === "development" && (
+                <p className="text-xs text-gray-400 mt-2">URL: {checkoutUrl}</p>
+              )}
             </div>
           </div>
         )}
@@ -82,9 +102,27 @@ export default function PayWayIframe({ checkoutUrl, onPaymentComplete, onPayment
               <div className="text-red-500 text-6xl mb-4">⚠️</div>
               <h3 className="text-lg font-semibold text-gray-800 mb-2">Payment Error</h3>
               <p className="text-gray-600 mb-4">{error}</p>
-              <button onClick={onClose} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-                Close
-              </button>
+              <div className="space-y-2">
+                <button
+                  onClick={() => {
+                    setError(null)
+                    setIsLoading(true)
+                    // Force iframe reload
+                    if (iframeRef.current) {
+                      iframeRef.current.src = checkoutUrl
+                    }
+                  }}
+                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 mr-2"
+                >
+                  Retry
+                </button>
+                <button onClick={onClose} className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">
+                  Close
+                </button>
+              </div>
+              {process.env.NODE_ENV === "development" && (
+                <p className="text-xs text-gray-400 mt-4">Debug: {checkoutUrl}</p>
+              )}
             </div>
           </div>
         )}
@@ -95,10 +133,15 @@ export default function PayWayIframe({ checkoutUrl, onPaymentComplete, onPayment
           className="w-full h-[calc(100%-60px)] border-0"
           onLoad={handleIframeLoad}
           onError={handleIframeError}
-          sandbox="allow-scripts allow-forms allow-top-navigation allow-popups allow-same-origin allow-downloads"
+          sandbox="allow-scripts allow-forms allow-top-navigation allow-popups allow-same-origin allow-downloads allow-modals allow-popups-to-escape-sandbox"
           title="PayWay Checkout"
-          allow="payment; encrypted-media; fullscreen"
+          allow="payment; encrypted-media; fullscreen; camera; microphone; geolocation"
           referrerPolicy="strict-origin-when-cross-origin"
+          loading="eager"
+          style={{
+            colorScheme: "normal",
+            backgroundColor: "white",
+          }}
         />
       </div>
     </div>

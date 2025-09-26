@@ -4,9 +4,10 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Loader2, ChevronRight, Smartphone, Monitor } from "lucide-react"
+import { Loader2, ChevronRight } from "lucide-react"
 import Image from "next/image"
 import PayWayIframe from "./payway-iframe"
+import PayWayHtmlDebug from "./payway-html-debug"
 
 interface PaywayCheckoutProps {
   orderId: string
@@ -123,6 +124,8 @@ export default function PayWayCheckout({
   const [transactionId, setTransactionId] = useState<string | null>(null)
   const [showIframe, setShowIframe] = useState(false)
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
+  const [paymentCompleted, setPaymentCompleted] = useState(false)
+  const [showDebug, setShowDebug] = useState(false)
 
   const { isMobile, isIOS, isAndroid } = useDeviceDetection()
   const availablePaymentMethods = getAvailablePaymentMethods(isMobile, isIOS, isAndroid)
@@ -135,6 +138,7 @@ export default function PayWayCheckout({
 
   const verifyPaymentStatus = useCallback(
     async (tranId: string) => {
+      console.log("[v0] Verifying payment status for transaction:", tranId)
       try {
         const response = await fetch("/api/payway/verify-payment", {
           method: "POST",
@@ -147,13 +151,19 @@ export default function PayWayCheckout({
         })
 
         const result = await response.json()
+        console.log("[v0] Payment verification result:", result)
 
         if (result.success && result.status === "PAID") {
+          setPaymentCompleted(true)
           onSuccess?.(tranId)
+        } else if (result.success && result.status === "PENDING") {
+          console.log("[v0] Payment is still pending, this is normal")
+          // Don't call onError for pending status
         } else {
-          onError?.("Payment verification failed")
+          onError?.(result.error || "Payment verification failed")
         }
-      } catch {
+      } catch (error) {
+        console.error("[v0] Payment verification error:", error)
         onError?.("Failed to verify payment status")
       }
     },
@@ -175,17 +185,21 @@ export default function PayWayCheckout({
       }
 
       const { type, data } = event.data
+      console.log("[v0] Received message from PayWay:", { type, data })
 
       switch (type) {
         case "PAYMENT_SUCCESS":
+          console.log("[v0] Payment success message received")
           setShowIframe(false)
           verifyPaymentStatus(data.tran_id || transactionId)
           break
         case "PAYMENT_ERROR":
+          console.log("[v0] Payment error message received")
           setShowIframe(false)
           onError?.(data.error || "Payment failed")
           break
         case "PAYMENT_CANCELLED":
+          console.log("[v0] Payment cancelled message received")
           setShowIframe(false)
           onCancel?.()
           break
@@ -200,6 +214,7 @@ export default function PayWayCheckout({
     setSelectedPaymentMethod(method)
     setIsLoading(true)
     setError(null)
+    setPaymentCompleted(false)
 
     try {
       const paymentMethodMap: Record<string, string> = {
@@ -213,6 +228,7 @@ export default function PayWayCheckout({
 
       const apiPaymentMethod = paymentMethodMap[method] || method
 
+      console.log("[v0] Creating PayWay transaction for method:", method)
       const response = await fetch("/api/payway/create-transaction", {
         method: "POST",
         headers: {
@@ -229,6 +245,7 @@ export default function PayWayCheckout({
       })
 
       const result = await response.json()
+      console.log("[v0] PayWay transaction creation result:", result)
 
       if (result.success) {
         setTransactionId(result.tran_id)
@@ -242,6 +259,8 @@ export default function PayWayCheckout({
         } else {
           throw new Error("Invalid PayWay response format")
         }
+
+        console.log("[v0] PayWay checkout created successfully, waiting for user to complete payment")
       } else {
         const errorMessage = result.error || "Failed to create PayWay transaction"
         const errorCode = result.code ? ` (Code: ${result.code})` : ""
@@ -249,6 +268,7 @@ export default function PayWayCheckout({
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "An error occurred"
+      console.error("[v0] PayWay transaction creation error:", errorMessage)
       setError(errorMessage)
       onError?.(errorMessage)
     } finally {
@@ -260,11 +280,13 @@ export default function PayWayCheckout({
     setShowIframe(false)
     setCheckoutUrl(null)
     setError(null)
+    setPaymentCompleted(false)
     onCancel?.()
   }
 
   const handleRetry = () => {
     setError(null)
+    setPaymentCompleted(false)
     handlePaymentMethodClick(selectedPaymentMethod)
   }
 
@@ -273,19 +295,28 @@ export default function PayWayCheckout({
     return method?.name || methodId
   }
 
+  const isDebugMode = process.env.NODE_ENV === "development"
+
+  if (showDebug && transactionId) {
+    return <PayWayHtmlDebug transactionId={transactionId} onClose={() => setShowDebug(false)} />
+  }
+
   if (showIframe && checkoutUrl) {
     return (
       <PayWayIframe
         checkoutUrl={checkoutUrl}
         onPaymentComplete={(result) => {
+          console.log("[v0] Payment completed in iframe:", result)
           setShowIframe(false)
           verifyPaymentStatus(result.tran_id || transactionId)
         }}
         onPaymentError={(error) => {
+          console.log("[v0] Payment error in iframe:", error)
           setShowIframe(false)
           onError?.(error.error || "Payment failed")
         }}
         onClose={() => {
+          console.log("[v0] PayWay iframe closed")
           setShowIframe(false)
           onCancel?.()
         }}
@@ -296,6 +327,25 @@ export default function PayWayCheckout({
   return (
     <div className="w-full max-w-md mx-auto bg-white rounded-lg shadow-sm border border-gray-100">
       <div className="p-6 space-y-4">
+        {isDebugMode && transactionId && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="text-sm font-medium text-yellow-800">Debug Mode</div>
+                <div className="text-xs text-yellow-600">Transaction ID: {transactionId}</div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowDebug(true)}
+                className="text-yellow-700 border-yellow-300"
+              >
+                Debug HTML
+              </Button>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg">
             <div className="font-medium mb-2">Payment Error</div>
@@ -306,10 +356,16 @@ export default function PayWayCheckout({
           </div>
         )}
 
+        {paymentCompleted && (
+          <div className="p-4 text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg">
+            <div className="font-medium mb-2">Payment Successful!</div>
+            <div>Your payment has been processed successfully.</div>
+          </div>
+        )}
+
         <div className="text-center mb-4">
           <h3 className="text-lg font-semibold text-[#1F2937] mb-2">Choose Payment Method</h3>
           <div className="flex items-center justify-center space-x-2 text-sm text-[#6B7280]">
-            
             {/*isMobile ? (
               <div className="flex items-center space-x-1">
                 <Smartphone className="w-4 h-4" />
@@ -332,7 +388,7 @@ export default function PayWayCheckout({
                 selectedPaymentMethod === method.id
                   ? "border-[#005E7B] bg-[#F8FFFE]"
                   : "border-[#E5E7EB] hover:border-[#D1D5DB] bg-white"
-              } ${isLoading ? "opacity-50 pointer-events-none" : ""}`}
+              } ${isLoading || paymentCompleted ? "opacity-50 pointer-events-none" : ""}`}
               onClick={() => handlePaymentMethodClick(method.id)}
             >
               <div className="flex items-center space-x-4">
@@ -340,16 +396,22 @@ export default function PayWayCheckout({
                 <div className="flex-1">
                   <div className="font-medium text-[#1F2937] text-base">{method.name}</div>
                   {/* Show description normally, but replace with card icons if method is "card" */}
-    {method.id === "card" ? (
-      <div className="flex items-center space-x-2 mt-1">
-        <Image src="/icons/visa.svg" alt="Visa" width={32} height={20} className="rounded-sm" />
-        <Image src="/icons/mastercard.svg" alt="Mastercard" width={32} height={20} className="rounded-sm" />
-        <Image src="/icons/unionpay.svg" alt="UnionPay" width={32} height={20} className="rounded-sm" />
-        <Image src="/icons/jcb.svg" alt="JCB" width={24} height={20} className="rounded-sm" />
-      </div>
-    ) : (
-      <div className="text-sm text-[#6B7280]">{method.description}</div>
-    )}
+                  {method.id === "card" ? (
+                    <div className="flex items-center space-x-2 mt-1">
+                      <Image src="/icons/visa.svg" alt="Visa" width={32} height={20} className="rounded-sm" />
+                      <Image
+                        src="/icons/mastercard.svg"
+                        alt="Mastercard"
+                        width={32}
+                        height={20}
+                        className="rounded-sm"
+                      />
+                      <Image src="/icons/unionpay.svg" alt="UnionPay" width={32} height={20} className="rounded-sm" />
+                      <Image src="/icons/jcb.svg" alt="JCB" width={24} height={20} className="rounded-sm" />
+                    </div>
+                  ) : (
+                    <div className="text-sm text-[#6B7280]">{method.description}</div>
+                  )}
 
                   {method.deviceType === "preferred" && isAndroid && (
                     <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 mt-1">
@@ -373,7 +435,7 @@ export default function PayWayCheckout({
         </div>
 
         <p className="text-xs text-[#6B7280] text-center leading-relaxed">
-          Click on a payment method to open PayWay checkout directly.
+          Click on a payment method to open PayWay checkout. Complete your payment in the secure window that opens.
         </p>
       </div>
     </div>
