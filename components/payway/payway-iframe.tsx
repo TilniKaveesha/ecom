@@ -95,9 +95,9 @@ export default function PayWayIframe({ checkoutUrl, onPaymentComplete, onPayment
           className="w-full h-[calc(100%-60px)] border-0"
           onLoad={handleIframeLoad}
           onError={handleIframeError}
-          sandbox="allow-scripts allow-forms allow-top-navigation allow-popups"
+          sandbox="allow-scripts allow-forms allow-top-navigation allow-popups allow-same-origin allow-downloads"
           title="PayWay Checkout"
-          allow="payment; encrypted-media"
+          allow="payment; encrypted-media; fullscreen"
           referrerPolicy="strict-origin-when-cross-origin"
         />
       </div>

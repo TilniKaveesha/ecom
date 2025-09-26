@@ -1,5 +1,4 @@
-/* eslint-disable no-var */
-import { type NextRequest, NextResponse } from "next/server"
+ import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
@@ -66,6 +65,9 @@ export async function GET(request: NextRequest) {
         /<script[^>]*src="https:\/\/checkout-sandbox\.payway\.com\.kh[^"]*"[^>]*><\/script>/g,
         "",
       )
+
+      htmlContent = htmlContent.replace(/<link[^>]*href="[^"]*\/_nuxt\/[^"]*"[^>]*>/g, "")
+      htmlContent = htmlContent.replace(/<script[^>]*src="[^"]*\/_nuxt\/[^"]*"[^>]*><\/script>/g, "")
 
       // Remove prefetch links that cause CORS errors
       htmlContent = htmlContent.replace(/<link[^>]*rel="prefetch"[^>]*>/g, "")
@@ -388,6 +390,7 @@ export async function GET(request: NextRequest) {
         "Cross-Origin-Embedder-Policy": "unsafe-none",
         "Cross-Origin-Opener-Policy": "unsafe-none",
         "Cross-Origin-Resource-Policy": "cross-origin",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
       },
     })
   } catch (error) {
@@ -417,11 +420,3 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Initialize global storage for HTML content
-declare global {
-  var paywayHtmlStorage: Record<string, string> | undefined
-}
-
-if (!global.paywayHtmlStorage) {
-  global.paywayHtmlStorage = {}
-}
