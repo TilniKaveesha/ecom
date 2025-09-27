@@ -415,6 +415,19 @@ export const payway = {
           console.log("HTML Response length:", htmlContent.length)
           console.log("HTML Response preview:", htmlContent.substring(0, 500))
 
+          // Validate that we received actual HTML content
+          if (!htmlContent || htmlContent.trim().length === 0) {
+            throw new Error("PayWay returned empty HTML content")
+          }
+
+          // Check if content looks like HTML
+          const isValidHtml =
+            htmlContent.includes("<html") || htmlContent.includes("<body") || htmlContent.includes("<form")
+          if (!isValidHtml) {
+            console.error("❌ PayWay returned non-HTML content:", htmlContent.substring(0, 200))
+            throw new Error("PayWay returned invalid HTML content")
+          }
+
           // Check for error indicators in HTML
           const errorIndicators = [
             "error occurred",
@@ -450,11 +463,60 @@ export const payway = {
           const isCheckoutForm = checkoutIndicators.some((indicator) => htmlContent.toLowerCase().includes(indicator))
 
           if (isCheckoutForm) {
-            console.log("✅ PayWay HTML checkout form received")
+            console.log("✅ PayWay HTML checkout form received - preparing for iframe display")
+
+            let processedHtml = htmlContent
+
+            // Ensure proper DOCTYPE and HTML structure for iframe
+            if (!processedHtml.includes("<!DOCTYPE")) {
+              processedHtml = "<!DOCTYPE html>\n" + processedHtml
+            }
+
+            // Add viewport meta tag for mobile compatibility if not present
+            if (!processedHtml.includes("viewport")) {
+              processedHtml = processedHtml.replace(
+                /<head>/i,
+                '<head>\n<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+              )
+            }
+
+            // Add iframe-friendly styling if not present
+            if (!processedHtml.includes("iframe-friendly")) {
+              const iframeStyling = `
+                <style id="iframe-friendly">
+                  body { 
+                    margin: 0; 
+                    padding: 20px; 
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background-color: #ffffff;
+                    overflow-x: hidden;
+                  }
+                  * { box-sizing: border-box; }
+                  .container, .main-content { 
+                    max-width: 100% !important; 
+                    width: 100% !important;
+                  }
+                  form { 
+                    max-width: 100% !important; 
+                    width: 100% !important;
+                  }
+                  input, select, button { 
+                    max-width: 100% !important; 
+                    font-size: 16px !important;
+                  }
+                  @media (max-width: 768px) {
+                    body { padding: 10px; }
+                    input, select, button { font-size: 16px !important; }
+                  }
+                </style>
+              `
+              processedHtml = processedHtml.replace(/<\/head>/i, iframeStyling + "</head>")
+            }
+
             return {
               success: true,
               response_type: "html",
-              checkout_html: htmlContent,
+              checkout_html: processedHtml, // Return processed HTML
               checkout_url: null,
               transaction_ref: tran_id,
               qr_string: null,
@@ -466,8 +528,9 @@ export const payway = {
               },
             }
           } else {
-            console.error("❌ Unexpected HTML content")
-            throw new Error("PayWay returned unexpected content")
+            console.error("❌ Unexpected HTML content - not a valid checkout form")
+            console.error("Content preview:", htmlContent.substring(0, 1000))
+            throw new Error("PayWay returned unexpected content - not a valid checkout form")
           }
         }
       } else {

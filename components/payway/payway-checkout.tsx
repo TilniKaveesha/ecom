@@ -4,10 +4,9 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Loader2, ChevronRight } from "lucide-react"
-import Image from "next/image"
-import PayWayIframe from "./payway-iframe"
+import { Loader2, ChevronRight, CreditCard, Smartphone, QrCode } from "lucide-react"
 import PayWayHtmlDebug from "./payway-html-debug"
+import PayWayPopup from "./payway-popup"
 
 interface PaywayCheckoutProps {
   orderId: string
@@ -45,52 +44,40 @@ const useDeviceDetection = () => {
 const getAvailablePaymentMethods = (isMobile: boolean, isIOS: boolean, isAndroid: boolean) => {
   const methods = [
     {
-      id: "aba-khqr",
+      id: "abapay_khqr",
       name: "ABA KHQR",
       description: isMobile ? "Scan with your banking app" : "Scan QR code to pay",
       icon: "aba-bank",
       deviceType: "all",
       priority: 1,
+      category: "qr",
     },
     {
-      id: "aba-deeplink",
-      name: "ABA Pay",
-      description: "Open directly in ABA Mobile app",
-      icon: "aba-bank",
-      deviceType: "mobile",
-      priority: 2,
-    },
-    {
-      id: "card",
+      id: "cards",
       name: "Credit/Debit Card",
       description: "Visa, Mastercard, UnionPay, JCB",
       icon: "cards",
       deviceType: "all",
-      priority: 3,
-    },
-    {
-      id: "google_pay",
-      name: "Google Pay",
-      description: "Pay with Google Pay",
-      icon: "google-pay",
-      deviceType: isAndroid ? "preferred" : "mobile",
-      priority: isAndroid ? 1 : 4,
+      priority: 2,
+      category: "card",
     },
     {
       id: "alipay",
       name: "Alipay",
-      description: "Scan to pay with Alipay",
+      description: "Pay with Alipay",
       icon: "alipay",
       deviceType: "all",
-      priority: 5,
+      priority: 3,
+      category: "ewallet",
     },
     {
       id: "wechat",
       name: "WeChat Pay",
-      description: "Scan to pay with WeChat",
+      description: "Pay with WeChat",
       icon: "wechat",
       deviceType: "all",
-      priority: 6,
+      priority: 4,
+      category: "ewallet",
     },
   ]
 
@@ -119,11 +106,12 @@ export default function PayWayCheckout({
 }: PaywayCheckoutProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("aba-khqr")
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("abapay_khqr")
   const [showPaymentInterface, setShowPaymentInterface] = useState(false)
   const [transactionId, setTransactionId] = useState<string | null>(null)
-  const [showIframe, setShowIframe] = useState(false)
+  const [showPopup, setShowPopup] = useState(false)
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
+  const [checkoutHtml, setCheckoutHtml] = useState<string | null>(null)
   const [paymentCompleted, setPaymentCompleted] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
 
@@ -190,17 +178,17 @@ export default function PayWayCheckout({
       switch (type) {
         case "PAYMENT_SUCCESS":
           console.log("[v0] Payment success message received")
-          setShowIframe(false)
+          setShowPopup(false)
           verifyPaymentStatus(data.tran_id || transactionId)
           break
         case "PAYMENT_ERROR":
           console.log("[v0] Payment error message received")
-          setShowIframe(false)
+          setShowPopup(false)
           onError?.(data.error || "Payment failed")
           break
         case "PAYMENT_CANCELLED":
           console.log("[v0] Payment cancelled message received")
-          setShowIframe(false)
+          setShowPopup(false)
           onCancel?.()
           break
       }
@@ -218,17 +206,15 @@ export default function PayWayCheckout({
 
     try {
       const paymentMethodMap: Record<string, string> = {
-        "aba-khqr": "abapay_khqr_deeplink", // This returns JSON with QR
-        "aba-deeplink": "abapay_khqr_deeplink", // Same as above
-        card: "cards", // This returns HTML form
-        alipay: "alipay", // This returns HTML form
-        wechat: "wechat", // This returns HTML form
-        google_pay: "google_pay", // This returns HTML form
+        abapay_khqr: "abapay_khqr", // ABA KHQR - returns JSON with QR
+        cards: "cards", // Credit/Debit cards - returns HTML form
+        alipay: "alipay", // Alipay - returns HTML form
+        wechat: "wechat", // WeChat - returns HTML form
       }
 
       const apiPaymentMethod = paymentMethodMap[method] || method
 
-      console.log("[v0] Creating PayWay transaction for method:", method)
+      console.log("[v0] Creating PayWay transaction for method:", method, "->", apiPaymentMethod)
       const response = await fetch("/api/payway/create-transaction", {
         method: "POST",
         headers: {
@@ -239,7 +225,7 @@ export default function PayWayCheckout({
           amount,
           currency,
           customerInfo,
-          paymentMethod: method, // Send original method for API mapping
+          paymentMethod: apiPaymentMethod, // Use mapped method
           return_url: `${window.location.origin}/api/payway/callback`,
         }),
       })
@@ -248,19 +234,23 @@ export default function PayWayCheckout({
       console.log("[v0] PayWay transaction creation result:", result)
 
       if (result.success) {
-        setTransactionId(result.tran_id)
+        setTransactionId(result.transaction_ref)
 
-        if (result.paymentType === "qr" && result.checkout_qr_url) {
-          setCheckoutUrl(result.checkout_qr_url)
-          setShowIframe(true)
-        } else if (result.paymentType === "hosted" && result.checkoutUrl) {
-          setCheckoutUrl(result.checkoutUrl)
-          setShowIframe(true)
+        if (result.response_type === "json" && result.checkout_url) {
+          // QR-based payments (ABA KHQR)
+          setCheckoutUrl(result.checkout_url)
+          setCheckoutHtml(null)
+          setShowPopup(true)
+        } else if (result.response_type === "html" && result.checkout_html) {
+          // HTML form-based payments (cards, alipay, wechat)
+          setCheckoutHtml(result.checkout_html)
+          setCheckoutUrl(null)
+          setShowPopup(true)
         } else {
           throw new Error("Invalid PayWay response format")
         }
 
-        console.log("[v0] PayWay checkout created successfully, waiting for user to complete payment")
+        console.log("[v0] PayWay checkout created successfully, opening popup")
       } else {
         const errorMessage = result.error || "Failed to create PayWay transaction"
         const errorCode = result.code ? ` (Code: ${result.code})` : ""
@@ -277,8 +267,9 @@ export default function PayWayCheckout({
   }
 
   const handleCancel = () => {
-    setShowIframe(false)
+    setShowPopup(false)
     setCheckoutUrl(null)
+    setCheckoutHtml(null)
     setError(null)
     setPaymentCompleted(false)
     onCancel?.()
@@ -295,29 +286,46 @@ export default function PayWayCheckout({
     return method?.name || methodId
   }
 
+  const getPaymentMethodIcon = (methodId: string) => {
+    switch (methodId) {
+      case "abapay_khqr":
+        return <QrCode className="w-6 h-6 text-blue-600" />
+      case "cards":
+        return <CreditCard className="w-6 h-6 text-gray-600" />
+      case "alipay":
+        return <Smartphone className="w-6 h-6 text-blue-500" />
+      case "wechat":
+        return <Smartphone className="w-6 h-6 text-green-500" />
+      default:
+        return <CreditCard className="w-6 h-6 text-gray-600" />
+    }
+  }
+
   const isDebugMode = process.env.NODE_ENV === "development"
 
   if (showDebug && transactionId) {
     return <PayWayHtmlDebug transactionId={transactionId} onClose={() => setShowDebug(false)} />
   }
 
-  if (showIframe && checkoutUrl) {
+  if (showPopup && transactionId) {
     return (
-      <PayWayIframe
-        checkoutUrl={checkoutUrl}
+      <PayWayPopup
+        checkoutUrl={checkoutUrl || undefined}
+        checkoutHtml={checkoutHtml || undefined}
+        transactionId={transactionId}
         onPaymentComplete={(result) => {
-          console.log("[v0] Payment completed in iframe:", result)
-          setShowIframe(false)
+          console.log("[v0] Payment completed in popup:", result)
+          setShowPopup(false)
           verifyPaymentStatus(result.tran_id || transactionId)
         }}
         onPaymentError={(error) => {
-          console.log("[v0] Payment error in iframe:", error)
-          setShowIframe(false)
+          console.log("[v0] Payment error in popup:", error)
+          setShowPopup(false)
           onError?.(error.error || "Payment failed")
         }}
         onClose={() => {
-          console.log("[v0] PayWay iframe closed")
-          setShowIframe(false)
+          console.log("[v0] PayWay popup closed")
+          setShowPopup(false)
           onCancel?.()
         }}
       />
@@ -366,17 +374,7 @@ export default function PayWayCheckout({
         <div className="text-center mb-4">
           <h3 className="text-lg font-semibold text-[#1F2937] mb-2">Choose Payment Method</h3>
           <div className="flex items-center justify-center space-x-2 text-sm text-[#6B7280]">
-            {/*isMobile ? (
-              <div className="flex items-center space-x-1">
-                <Smartphone className="w-4 h-4" />
-                <span>Mobile</span>
-              </div>
-            ) : (
-              <div className="flex items-center space-x-1">
-                <Monitor className="w-4 h-4" />
-                <span>Desktop</span>
-              </div>
-            )*/}
+            <span>Secure payment powered by PayWay Cambodia</span>
           </div>
         </div>
 
@@ -392,35 +390,36 @@ export default function PayWayCheckout({
               onClick={() => handlePaymentMethodClick(method.id)}
             >
               <div className="flex items-center space-x-4">
-                <Image src={`/icons/${method.icon}.svg`} alt={method.name} width={40} height={40} className="rounded" />
+                <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-50">
+                  {getPaymentMethodIcon(method.id)}
+                </div>
                 <div className="flex-1">
                   <div className="font-medium text-[#1F2937] text-base">{method.name}</div>
-                  {/* Show description normally, but replace with card icons if method is "card" */}
-                  {method.id === "card" ? (
+                  {method.id === "cards" ? (
                     <div className="flex items-center space-x-2 mt-1">
-                      <Image src="/icons/visa.svg" alt="Visa" width={32} height={20} className="rounded-sm" />
-                      <Image
-                        src="/icons/mastercard.svg"
-                        alt="Mastercard"
-                        width={32}
-                        height={20}
-                        className="rounded-sm"
-                      />
-                      <Image src="/icons/unionpay.svg" alt="UnionPay" width={32} height={20} className="rounded-sm" />
-                      <Image src="/icons/jcb.svg" alt="JCB" width={24} height={20} className="rounded-sm" />
+                      <span className="text-sm text-[#6B7280]">Visa, Mastercard, UnionPay, JCB</span>
+                    </div>
+                  ) : method.id === "abapay_khqr" ? (
+                    <div className="text-sm text-[#6B7280]">
+                      {isMobile ? "Scan with banking app" : "Scan QR code to pay"}
                     </div>
                   ) : (
                     <div className="text-sm text-[#6B7280]">{method.description}</div>
                   )}
 
-                  {method.deviceType === "preferred" && isAndroid && (
-                    <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 mt-1">
-                      Recommended for Android
+                  {method.category === "qr" && (
+                    <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800 mt-1">
+                      QR Payment
                     </div>
                   )}
-                  {method.id === "aba-deeplink" && (
-                    <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800 mt-1">
-                      Mobile Only
+                  {method.category === "card" && (
+                    <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 mt-1">
+                      Card Payment
+                    </div>
+                  )}
+                  {method.category === "ewallet" && (
+                    <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800 mt-1">
+                      E-Wallet
                     </div>
                   )}
                 </div>

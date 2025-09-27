@@ -233,3 +233,91 @@ body {
 .animate-float-3 {
   animation: float-3 7s ease-in-out infinite;
 }
+
+/* PayWay specific styles inspired by WooCommerce plugin */
+.payway-payment-logo {
+  height: 33px !important;
+  margin-top: 0px !important;
+}
+
+.payway-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.payway-modal-content {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: hidden;
+  position: relative;
+}
+
+.payway-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.payway-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.payway-loader {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* Mobile responsive styles for PayWay */
+@media (max-width: 500px) {
+  .payway-modal-content {
+    width: calc(100vw - 25px);
+    height: calc(100vh - 30px);
+    margin: 15px auto;
+  }
+
+  .payway-iframe {
+    width: 100%;
+    height: 100%;
+  }
+}
