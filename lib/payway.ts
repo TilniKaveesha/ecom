@@ -394,6 +394,7 @@ export const payway = {
               response_type: "json",
               checkout_html: null,
               checkout_url: result.checkout_qr_url || null,
+              checkout_qr_url: result.checkout_qr_url || null,
               transaction_ref: result.status.tran_id || tran_id,
               qr_string: result.qr_string || null,
               abapay_deeplink: result.abapay_deeplink || null,
@@ -513,11 +514,80 @@ export const payway = {
               processedHtml = processedHtml.replace(/<\/head>/i, iframeStyling + "</head>")
             }
 
+            // Add target="aba_webservice" to all forms for ABA PayWay integration
+            processedHtml = processedHtml.replace(/<form([^>]*)>/gi, (match, attributes) => {
+              // Check if target attribute already exists
+              if (attributes.includes("target=")) {
+                // Replace existing target with aba_webservice
+                return match.replace(/target\s*=\s*["'][^"']*["']/gi, 'target="aba_webservice"')
+              } else {
+                // Add target attribute
+                return `<form${attributes} target="aba_webservice">`
+              }
+            })
+
+            const abaPaywayScript = `
+              <script src="https://checkout.payway.com.kh/plugins/checkout2-0.js"></script>
+              <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+              <script>
+                $(document).ready(function(){
+                  // Find checkout button (common selectors)
+                  const checkoutButton = $('#checkout_button, .checkout-button, [type="submit"], button[name*="checkout"], input[value*="checkout"], input[value*="pay"]').first();
+                  
+                  if (checkoutButton.length) {
+                    checkoutButton.click(function(e){
+                      e.preventDefault();
+                      
+                      // Find the form and append payment options
+                      const form = $(this).closest('form');
+                      const paymentOption = $(".payment_option:checked, input[name*='payment']:checked").first();
+                      
+                      if (form.length && form.attr('id')) {
+                        $('#' + form.attr('id')).append(paymentOption);
+                      } else if (form.length) {
+                        form.append(paymentOption);
+                      }
+                      
+                      // Trigger ABA PayWay checkout
+                      if (typeof AbaPayway !== 'undefined' && AbaPayway.checkout) {
+                        AbaPayway.checkout();
+                      } else {
+                        console.warn('AbaPayway.checkout not available, submitting form normally');
+                        form.submit();
+                      }
+                    });
+                  }
+                  
+                  // Listen for checkout_qr_url response from ABA PayWay
+                  window.addEventListener('message', function(event) {
+                    if (event.data && event.data.checkout_qr_url) {
+                      // Send QR URL to parent window for popup display
+                      if (window.parent !== window) {
+                        window.parent.postMessage({
+                          type: 'aba_payway_qr',
+                          checkout_qr_url: event.data.checkout_qr_url,
+                          transaction_id: event.data.transaction_id || '${tran_id}'
+                        }, '*');
+                      }
+                    }
+                  });
+                });
+              </script>
+            `
+
+            // Insert ABA PayWay script before closing body tag
+            if (processedHtml.includes("</body>")) {
+              processedHtml = processedHtml.replace("</body>", abaPaywayScript + "</body>")
+            } else {
+              processedHtml += abaPaywayScript
+            }
+
             return {
               success: true,
               response_type: "html",
               checkout_html: processedHtml, // Return processed HTML
               checkout_url: null,
+              checkout_qr_url: null,
               transaction_ref: tran_id,
               qr_string: null,
               abapay_deeplink: null,

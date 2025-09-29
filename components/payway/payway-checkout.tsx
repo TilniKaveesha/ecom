@@ -1,12 +1,14 @@
+ 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable react-hooks/exhaustive-deps */
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Loader2, ChevronRight, CreditCard, Smartphone, QrCode } from "lucide-react"
+import { Loader2, ChevronRight, CreditCard } from "lucide-react"
 import PayWayHtmlDebug from "./payway-html-debug"
 import PayWayPopup from "./payway-popup"
+import Image from "next/image"
 
 interface PaywayCheckoutProps {
   orderId: string
@@ -17,9 +19,15 @@ interface PaywayCheckoutProps {
     email: string
     phone: string
   }
+  checkoutUrl?: string
+  checkoutHtml?: string
+  transactionId?: string
+  onPaymentComplete?: (result: { tran_id?: string; status?: string }) => void
+  onPaymentError?: (error: { error?: string; message?: string }) => void
   onSuccess?: (transactionRef: string) => void
   onError?: (error: string) => void
   onCancel?: () => void
+  onClose?: () => void
 }
 
 const useDeviceDetection = () => {
@@ -114,6 +122,8 @@ export default function PayWayCheckout({
   const [checkoutHtml, setCheckoutHtml] = useState<string | null>(null)
   const [paymentCompleted, setPaymentCompleted] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
+  const [showAbaForm, setShowAbaForm] = useState(false)
+  const [abaFormHtml, setAbaFormHtml] = useState<string | null>(null)
 
   const { isMobile, isIOS, isAndroid } = useDeviceDetection()
   const availablePaymentMethods = getAvailablePaymentMethods(isMobile, isIOS, isAndroid)
@@ -123,6 +133,85 @@ export default function PayWayCheckout({
       setSelectedPaymentMethod(availablePaymentMethods[0].id)
     }
   }, [isMobile, isAndroid])
+
+  useEffect(() => {
+    const loadAbaPaywayScript = () => {
+      // Check if script is already loaded
+      const existingScript = document.querySelector('script[src*="checkout2-0.js"]')
+      if (existingScript) {
+        console.log("[v0] ABA PayWay script already loaded, skipping")
+        return
+      }
+
+      // Load ABA PayWay checkout script
+      const script = document.createElement("script")
+      script.src = "https://checkout.payway.com.kh/plugins/checkout2-0.js"
+      script.async = true
+      script.onload = () => {
+        console.log("[v0] ABA PayWay script loaded successfully")
+      }
+      script.onerror = () => {
+        console.error("[v0] Failed to load ABA PayWay script")
+      }
+      document.head.appendChild(script)
+    }
+
+    const loadJQuery = () => {
+      // Check if jQuery is already loaded
+      if (window.jQuery) {
+        console.log("[v0] jQuery already available")
+        loadAbaPaywayScript()
+        return
+      }
+
+      const existingJQuery = document.querySelector('script[src*="jquery"]')
+      if (existingJQuery) {
+        console.log("[v0] jQuery script already loading")
+        return
+      }
+
+      const jqueryScript = document.createElement("script")
+      jqueryScript.src = "https://code.jquery.com/jquery-3.6.0.min.js"
+      jqueryScript.async = true
+      jqueryScript.onload = () => {
+        console.log("[v0] jQuery loaded successfully")
+        loadAbaPaywayScript()
+      }
+      jqueryScript.onerror = () => {
+        console.error("[v0] Failed to load jQuery")
+      }
+      document.head.appendChild(jqueryScript)
+    }
+
+    loadJQuery()
+
+    return () => {
+      // Don't remove scripts during development hot reload to prevent re-loading issues
+      if (process.env.NODE_ENV !== "development") {
+        const scripts = document.querySelectorAll('script[src*="checkout2-0.js"], script[src*="jquery"]')
+        scripts.forEach((script) => {
+          if (script.parentNode) {
+            script.parentNode.removeChild(script)
+          }
+        })
+      }
+    }
+  }, [])
+
+  const handleAbaCheckout = useCallback(() => {
+    if (typeof window !== "undefined" && window.AbaPayway && window.$) {
+      console.log("[v0] Triggering ABA PayWay checkout")
+      try {
+        window.AbaPayway.checkout()
+      } catch (error) {
+        console.error("[v0] ABA PayWay checkout error:", error)
+        onError?.("Failed to initialize ABA PayWay checkout")
+      }
+    } else {
+      console.error("[v0] ABA PayWay or jQuery not loaded")
+      onError?.("ABA PayWay checkout not available")
+    }
+  }, [onError])
 
   const verifyPaymentStatus = useCallback(
     async (tranId: string) => {
@@ -176,19 +265,29 @@ export default function PayWayCheckout({
       console.log("[v0] Received message from PayWay:", { type, data })
 
       switch (type) {
+        case "CHECKOUT_QR_URL":
+          // Handle checkout_qr_url response for popup display
+          console.log("[v0] Checkout QR URL received for popup display:", data.checkout_qr_url)
+          setCheckoutUrl(data.checkout_qr_url)
+          setShowAbaForm(false) // Close ABA form
+          setShowPopup(true) // Show QR popup
+          break
         case "PAYMENT_SUCCESS":
           console.log("[v0] Payment success message received")
           setShowPopup(false)
+          setShowAbaForm(false)
           verifyPaymentStatus(data.tran_id || transactionId)
           break
         case "PAYMENT_ERROR":
           console.log("[v0] Payment error message received")
           setShowPopup(false)
+          setShowAbaForm(false)
           onError?.(data.error || "Payment failed")
           break
         case "PAYMENT_CANCELLED":
           console.log("[v0] Payment cancelled message received")
           setShowPopup(false)
+          setShowAbaForm(false)
           onCancel?.()
           break
       }
@@ -242,15 +341,112 @@ export default function PayWayCheckout({
           setCheckoutHtml(null)
           setShowPopup(true)
         } else if (result.response_type === "html" && result.checkout_html) {
-          // HTML form-based payments (cards, alipay, wechat)
-          setCheckoutHtml(result.checkout_html)
-          setCheckoutUrl(null)
-          setShowPopup(true)
+          let processedHtml = result.checkout_html
+
+          // Add target="aba_webservice" to all forms as required by ABA PayWay
+          processedHtml = processedHtml.replace(/<form([^>]*)>/gi, '<form$1 target="aba_webservice">')
+
+          const abaScript = `
+            <script>
+              // Prevent duplicate script loading
+              if (typeof _aba_checkout_baseUrl === 'undefined') {
+                var script1 = document.createElement('script');
+                script1.src = 'https://checkout.payway.com.kh/plugins/checkout2-0.js';
+                script1.async = true;
+                document.head.appendChild(script1);
+              }
+              
+              if (typeof jQuery === 'undefined') {
+                var script2 = document.createElement('script');
+                script2.src = 'https://code.jquery.com/jquery-3.6.0.min.js';
+                script2.async = true;
+                document.head.appendChild(script2);
+              }
+            </script>
+            <script>
+              // Wait for scripts to load before initializing
+              function initializeAbaPayway() {
+                if (typeof jQuery !== 'undefined' && typeof AbaPayway !== 'undefined') {
+                  console.log('[PayWay] Communication script loaded for transaction: ${result.transaction_ref}');
+                  
+                  $(document).ready(function(){
+                    // Your specific ABA PayWay integration
+                    $('#checkout_button').click(function(){
+                      $('#aba_merchant_request').append($(".payment_option:checked"));
+                      AbaPayway.checkout();
+                    });
+                  });
+                  
+                  // checkout_qr_url handling for popup display
+                  window.addEventListener('message', function(event) {
+                    console.log('[ABA PayWay] Received message:', event.data);
+                    
+                    // Handle checkout_qr_url response as requested
+                    if (event.data && event.data.checkout_qr_url) {
+                      console.log('[ABA PayWay] Checkout QR URL received:', event.data.checkout_qr_url);
+                      
+                      // Render QR URL as popup view as specified
+                      if (window.parent && window.parent !== window) {
+                        window.parent.postMessage({
+                          type: 'CHECKOUT_QR_URL',
+                          data: { 
+                            checkout_qr_url: event.data.checkout_qr_url,
+                            transaction_id: '${result.transaction_ref}'
+                          }
+                        }, '*');
+                      }
+                    }
+                    
+                    // Handle ABA PayWay success response
+                    if (event.data && (event.data.type === 'PAYMENT_SUCCESS' || event.data.status === 'success')) {
+                      if (window.parent && window.parent !== window) {
+                        window.parent.postMessage({
+                          type: 'PAYMENT_SUCCESS',
+                          data: event.data
+                        }, '*');
+                      }
+                    }
+                    
+                    // Handle ABA PayWay error response
+                    if (event.data && (event.data.type === 'PAYMENT_ERROR' || event.data.status === 'error')) {
+                      if (window.parent && window.parent !== window) {
+                        window.parent.postMessage({
+                          type: 'PAYMENT_ERROR',
+                          data: event.data
+                        }, '*');
+                      }
+                    }
+                  });
+                  
+                  // Monitor for ABA PayWay specific events
+                  if (typeof AbaPayway !== 'undefined') {
+                    console.log('[ABA PayWay] ABA PayWay object available');
+                  }
+                } else {
+                  // Retry after a short delay
+                  setTimeout(initializeAbaPayway, 500);
+                }
+              }
+              
+              // Start initialization
+              initializeAbaPayway();
+            </script>
+          `
+
+          // Insert the script before closing body tag
+          if (processedHtml.includes("</body>")) {
+            processedHtml = processedHtml.replace("</body>", abaScript + "</body>")
+          } else {
+            processedHtml += abaScript
+          }
+
+          setAbaFormHtml(processedHtml)
+          setShowAbaForm(true)
         } else {
           throw new Error("Invalid PayWay response format")
         }
 
-        console.log("[v0] PayWay checkout created successfully, opening popup")
+        console.log("[v0] PayWay checkout created successfully")
       } else {
         const errorMessage = result.error || "Failed to create PayWay transaction"
         const errorCode = result.code ? ` (Code: ${result.code})` : ""
@@ -268,8 +464,10 @@ export default function PayWayCheckout({
 
   const handleCancel = () => {
     setShowPopup(false)
+    setShowAbaForm(false)
     setCheckoutUrl(null)
     setCheckoutHtml(null)
+    setAbaFormHtml(null)
     setError(null)
     setPaymentCompleted(false)
     onCancel?.()
@@ -289,15 +487,31 @@ export default function PayWayCheckout({
   const getPaymentMethodIcon = (methodId: string) => {
     switch (methodId) {
       case "abapay_khqr":
-        return <QrCode className="w-6 h-6 text-blue-600" />
+        return (
+          <div className="relative">
+            <Image src="/icons/aba-bank.svg" alt="ABA Bank" width={32} height={32}  />
+          </div>
+        )
       case "cards":
-        return <CreditCard className="w-6 h-6 text-gray-600" />
+        return (
+          <div className="relative">
+            <Image src="/icons/cards.svg" alt="Cards" width={32} height={32}  />
+          </div>
+        )
       case "alipay":
-        return <Smartphone className="w-6 h-6 text-blue-500" />
+        return (
+          <div className="relative">
+            <Image src="/icons/alipay.svg" alt="Alipay" width={32} height={32} />
+          </div>
+        )
       case "wechat":
-        return <Smartphone className="w-6 h-6 text-green-500" />
+        return (
+          <div className="relative">
+            <Image src="/icons/wechat.svg" alt="WeChat" width={32} height={32} />
+          </div>
+        )
       default:
-        return <CreditCard className="w-6 h-6 text-gray-600" />
+        return <CreditCard className="" />
     }
   }
 
@@ -307,21 +521,48 @@ export default function PayWayCheckout({
     return <PayWayHtmlDebug transactionId={transactionId} onClose={() => setShowDebug(false)} />
   }
 
+  if (showAbaForm && abaFormHtml) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" id="aba_main_modal">
+        <div className="bg-white rounded-lg shadow-xl relative w-full max-w-4xl mx-4 max-h-[90vh] overflow-hidden">
+          <div className="flex justify-between items-center p-4 border-b bg-gray-50 rounded-t-lg">
+            <h2 className="text-lg font-semibold text-gray-800">ABA PayWay Checkout</h2>
+            <button
+              onClick={handleCancel}
+              className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-200 transition-colors"
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
+          <div className="overflow-auto max-h-[calc(90vh-80px)]">
+            <iframe
+              srcDoc={abaFormHtml}
+              className="w-full h-[600px] border-none"
+              title="ABA PayWay Checkout"
+              sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+            />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (showPopup && transactionId) {
     return (
       <PayWayPopup
         checkoutUrl={checkoutUrl || undefined}
         checkoutHtml={checkoutHtml || undefined}
         transactionId={transactionId}
-        onPaymentComplete={(result) => {
+        onPaymentComplete={(result: { tran_id?: string; status?: string }) => {
           console.log("[v0] Payment completed in popup:", result)
           setShowPopup(false)
           verifyPaymentStatus(result.tran_id || transactionId)
         }}
-        onPaymentError={(error) => {
+        onPaymentError={(error: { error?: string; message?: string }) => {
           console.log("[v0] Payment error in popup:", error)
           setShowPopup(false)
-          onError?.(error.error || "Payment failed")
+          onError?.(error.error || error.message || "Payment failed")
         }}
         onClose={() => {
           console.log("[v0] PayWay popup closed")
@@ -389,38 +630,25 @@ export default function PayWayCheckout({
               } ${isLoading || paymentCompleted ? "opacity-50 pointer-events-none" : ""}`}
               onClick={() => handlePaymentMethodClick(method.id)}
             >
-              <div className="flex items-center space-x-4">
-                <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-50">
+              <div className="flex items-center space-x-3">
+                <div>
                   {getPaymentMethodIcon(method.id)}
                 </div>
                 <div className="flex-1">
-                  <div className="font-medium text-[#1F2937] text-base">{method.name}</div>
+                  <div className="font-medium space-y-1 text-[#1F2937] text-base">{method.name}</div>
                   {method.id === "cards" ? (
-                    <div className="flex items-center space-x-2 mt-1">
-                      <span className="text-sm text-[#6B7280]">Visa, Mastercard, UnionPay, JCB</span>
-                    </div>
+                      <div className="flex gap-2 mt-1">
+                        <Image src="/icons/visa.svg" alt="Icon 1" height={32} width={24} />
+                        <Image src="/icons/mastercard.svg" alt="Icon 2" height={32} width={24} />
+                        <Image src="/icons/unionpay.svg" alt="Icon 3" height={32} width={24} />
+                        <Image src="/icons/jcb.svg" alt="Icon 4" height={32} width={24} />
+                      </div>
                   ) : method.id === "abapay_khqr" ? (
-                    <div className="text-sm text-[#6B7280]">
+                    <div className="text-sm space-y-1 text-[#6B7280]">
                       {isMobile ? "Scan with banking app" : "Scan QR code to pay"}
                     </div>
                   ) : (
-                    <div className="text-sm text-[#6B7280]">{method.description}</div>
-                  )}
-
-                  {method.category === "qr" && (
-                    <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800 mt-1">
-                      QR Payment
-                    </div>
-                  )}
-                  {method.category === "card" && (
-                    <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 mt-1">
-                      Card Payment
-                    </div>
-                  )}
-                  {method.category === "ewallet" && (
-                    <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800 mt-1">
-                      E-Wallet
-                    </div>
+                    <div className="text-sm  items-center space-x-1 mt-1 text-[#6B7280]">{method.description}</div>
                   )}
                 </div>
               </div>

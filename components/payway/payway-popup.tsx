@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 "use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
@@ -8,8 +8,8 @@ interface PayWayPopupProps {
   checkoutUrl?: string
   checkoutHtml?: string
   transactionId: string
-  onPaymentComplete?: (result: any) => void
-  onPaymentError?: (error: any) => void
+  onPaymentComplete?: (result: { tran_id?: string; status?: string }) => void
+  onPaymentError?: (error: { error?: string; message?: string }) => void
   onClose?: () => void
 }
 
@@ -79,30 +79,35 @@ export default function PayWayPopup({
         popup.document.write(checkoutHtml)
         popup.document.close()
 
-        // Add communication script to popup
         const script = popup.document.createElement("script")
         script.textContent = `
-          // Monitor for payment completion
           function checkPaymentStatus() {
             try {
-              // Check for success indicators in the page
+              // Check for ABA PayWay specific success indicators
+              const abaSuccessElements = document.querySelectorAll('[class*="aba-success"], [id*="aba-success"], [class*="payway-success"], [id*="payway-success"]');
               const successElements = document.querySelectorAll('[class*="success"], [id*="success"], [class*="approved"], [id*="approved"]');
               const errorElements = document.querySelectorAll('[class*="error"], [id*="error"], [class*="failed"], [id*="failed"]');
               
-              if (successElements.length > 0) {
-                window.opener.postMessage({
-                  type: 'PAYMENT_SUCCESS',
-                  data: { tran_id: '${transactionId}', status: 'success' }
-                }, '*');
-                window.close();
+              if (abaSuccessElements.length > 0 || successElements.length > 0) {
+                console.log('[PayWay Popup] Payment success detected');
+                if (window.opener && !window.opener.closed) {
+                  window.opener.postMessage({
+                    type: 'PAYMENT_SUCCESS',
+                    data: { tran_id: '${transactionId}', status: 'success' }
+                  }, '*');
+                  window.close();
+                }
                 return;
               }
               
               if (errorElements.length > 0) {
-                window.opener.postMessage({
-                  type: 'PAYMENT_ERROR', 
-                  data: { error: 'Payment failed' }
-                }, '*');
+                console.log('[PayWay Popup] Payment error detected');
+                if (window.opener && !window.opener.closed) {
+                  window.opener.postMessage({
+                    type: 'PAYMENT_ERROR', 
+                    data: { error: 'Payment failed' }
+                  }, '*');
+                }
                 return;
               }
               
@@ -112,42 +117,133 @@ export default function PayWayPopup({
               const tranId = urlParams.get('tran_id');
               
               if (status === 'success' && tranId) {
-                window.opener.postMessage({
-                  type: 'PAYMENT_SUCCESS',
-                  data: { tran_id: tranId, status: 'success' }
-                }, '*');
-                window.close();
+                console.log('[PayWay Popup] URL success detected');
+                if (window.opener && !window.opener.closed) {
+                  window.opener.postMessage({
+                    type: 'PAYMENT_SUCCESS',
+                    data: { tran_id: tranId, status: 'success' }
+                  }, '*');
+                  window.close();
+                }
               } else if (status === 'error' || status === 'failed') {
-                window.opener.postMessage({
-                  type: 'PAYMENT_ERROR',
-                  data: { error: urlParams.get('error') || 'Payment failed' }
-                }, '*');
+                console.log('[PayWay Popup] URL error detected');
+                if (window.opener && !window.opener.closed) {
+                  window.opener.postMessage({
+                    type: 'PAYMENT_ERROR',
+                    data: { error: urlParams.get('error') || 'Payment failed' }
+                  }, '*');
+                }
               }
             } catch (e) {
-              console.log('Payment status check error:', e);
+              console.log('[PayWay Popup] Payment status check error:', e);
             }
           }
           
-          // Monitor URL changes and form submissions
+          function monitorForQRUrl() {
+            try {
+              // Check for checkout_qr_url in various possible locations
+              const qrUrlElements = document.querySelectorAll('[data-qr-url], [data-checkout-url], .qr-url, .checkout-url');
+              qrUrlElements.forEach(element => {
+                const qrUrl = element.getAttribute('data-qr-url') || element.getAttribute('data-checkout-url') || element.textContent;
+                if (qrUrl && (qrUrl.includes('checkout') || qrUrl.includes('qr'))) {
+                  console.log('[PayWay Popup] QR URL found:', qrUrl);
+                  if (window.opener && !window.opener.closed) {
+                    window.opener.postMessage({
+                      type: 'CHECKOUT_QR_URL',
+                      data: { checkout_qr_url: qrUrl }
+                    }, '*');
+                  }
+                }
+              });
+              
+              // Also check for QR URLs in script tags or data attributes
+              const scripts = document.querySelectorAll('script');
+              scripts.forEach(script => {
+                const content = script.textContent || script.innerHTML;
+                if (content && content.includes('checkout_qr_url')) {
+                  const match = content.match(/checkout_qr_url['":]\\s*['"]([^'"]+)['"]/);
+                  if (match && match[1]) {
+                    console.log('[PayWay Popup] QR URL found in script:', match[1]);
+                    if (window.opener && !window.opener.closed) {
+                      window.opener.postMessage({
+                        type: 'CHECKOUT_QR_URL',
+                        data: { checkout_qr_url: match[1] }
+                      }, '*');
+                    }
+                  }
+                }
+              });
+            } catch (e) {
+              console.log('[PayWay Popup] QR URL monitoring error:', e);
+            }
+          }
+          
+          // Monitor URL changes and form submissions with better error handling
           let lastUrl = window.location.href;
-          setInterval(() => {
-            if (window.location.href !== lastUrl) {
-              lastUrl = window.location.href;
-              checkPaymentStatus();
+          const monitorInterval = setInterval(() => {
+            try {
+              if (window.location.href !== lastUrl) {
+                lastUrl = window.location.href;
+                checkPaymentStatus();
+                monitorForQRUrl();
+              }
+              
+              // Check if popup is still connected to parent
+              if (!window.opener || window.opener.closed) {
+                console.log('[PayWay Popup] Parent window closed, cleaning up');
+                clearInterval(monitorInterval);
+                window.close();
+              }
+            } catch (e) {
+              console.log('[PayWay Popup] Monitor error:', e);
             }
           }, 1000);
           
           // Check on page load
-          window.addEventListener('load', checkPaymentStatus);
-          document.addEventListener('DOMContentLoaded', checkPaymentStatus);
+          window.addEventListener('load', function() {
+            checkPaymentStatus();
+            monitorForQRUrl();
+          });
+          document.addEventListener('DOMContentLoaded', function() {
+            checkPaymentStatus();
+            monitorForQRUrl();
+          });
           
           // Monitor form submissions
           document.addEventListener('submit', function(e) {
-            setTimeout(checkPaymentStatus, 2000);
+            console.log('[PayWay Popup] Form submitted');
+            setTimeout(() => {
+              checkPaymentStatus();
+              monitorForQRUrl();
+            }, 2000);
+          });
+          
+          // Monitor for ABA PayWay specific events
+          window.addEventListener('message', function(event) {
+            console.log('[PayWay Popup] Received internal message:', event.data);
+            if (event.data && event.data.checkout_qr_url) {
+              if (window.opener && !window.opener.closed) {
+                window.opener.postMessage({
+                  type: 'CHECKOUT_QR_URL',
+                  data: event.data
+                }, '*');
+              }
+            }
+          });
+          
+          // Handle popup close
+          window.addEventListener('beforeunload', function() {
+            if (window.opener && !window.opener.closed) {
+              window.opener.postMessage({
+                type: 'PAYMENT_CANCELLED',
+                data: { message: 'Popup closed by user' }
+              }, '*');
+            }
           });
         `
         popup.document.head.appendChild(script)
       } else if (checkoutUrl) {
+        console.log("[PayWay Popup] Loading checkout URL:", checkoutUrl)
         popup.location.href = checkoutUrl
       }
 
@@ -198,6 +294,9 @@ export default function PayWayPopup({
       } else if (event.data?.type === "PAYMENT_CANCELLED" || event.data?.status === "cancelled") {
         setIsLoading(false)
         onClose?.()
+      } else if (event.data?.type === "CHECKOUT_QR_URL") {
+        console.log("[PayWay] Received QR URL:", event.data.data.checkout_qr_url)
+        // Handle QR URL here, e.g., display it in the parent window
       }
     },
     [onPaymentComplete, onPaymentError, onClose],
