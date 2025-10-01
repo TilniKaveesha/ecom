@@ -5,7 +5,7 @@ import { Convert } from "@/lib/payway-header-types"
 import { PayWayPaymentOption } from "@/lib/payway-purchase-types"
 
 if (!global.paywayHtmlStorage) {
-  global.paywayHtmlStorage = {} as Record<string, string>;
+  global.paywayHtmlStorage = {} as Record<string, string>
 }
 
 export async function POST(request: NextRequest) {
@@ -66,8 +66,8 @@ export async function POST(request: NextRequest) {
     }
 
     const paymentOptionMap: Record<string, PayWayPaymentOption> = {
-      abapay_khqr: PayWayPaymentOption.ABA_KHQR_DEEPLINK, // Returns JSON with QR data
-      abapay_khqr_deeplink: PayWayPaymentOption.ABA_KHQR_DEEPLINK, // Same as above
+      abapay_khqr: PayWayPaymentOption.ABA_KHQR, // Returns HTML checkout with QR
+      abapay_khqr_deeplink: PayWayPaymentOption.ABA_KHQR_DEEPLINK, // Returns JSON with QR data
       cards: PayWayPaymentOption.CARDS, // Returns HTML checkout form
       credit_debit: PayWayPaymentOption.CARDS, // Alias for cards
       alipay: PayWayPaymentOption.ALIPAY, // Returns HTML checkout form
@@ -234,7 +234,7 @@ export async function POST(request: NextRequest) {
         } else {
           processedHtml += communicationScript
         }
-          global.paywayHtmlStorage![result.transaction_ref] = result.checkout_html;
+        global.paywayHtmlStorage![result.transaction_ref] = result.checkout_html
         const response = {
           success: true,
           response_type: "html",

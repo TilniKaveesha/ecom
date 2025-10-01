@@ -342,148 +342,255 @@ export const payway = {
 
     const url = "https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase"
 
-    try {
-      console.log("=== Making PayWay Purchase API Request ===")
-      console.log("URL:", url)
-      console.log("Method: POST")
-      console.log("Content-Type: multipart/form-data")
+    let lastError: Error | null = null
+    const maxRetries = paymentOption === "abapay_khqr_deeplink" ? 2 : 1
 
-      const response = await fetch(url, {
-        method: "POST",
-        body: formData,
-        // Don't set Content-Type header - let fetch handle it for FormData
-      })
-
-      console.log("=== PayWay Purchase API Response ===")
-      console.log("Status:", response.status)
-      console.log("Content-Type:", response.headers.get("content-type"))
-
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const responseHeaders: Record<string, string> = {}
-        response.headers.forEach((value, key) => {
-          responseHeaders[key] = value
+        console.log(`=== Making PayWay Purchase API Request (Attempt ${attempt}/${maxRetries}) ===`)
+        console.log("URL:", url)
+        console.log("Method: POST")
+        console.log("Content-Type: multipart/form-data")
+        console.log("Payment Option:", payment_option)
+
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+
+        const response = await fetch(url, {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+          // Don't set Content-Type header - let fetch handle it for FormData
         })
 
-        // Validate Content-Type header if present
-        if (responseHeaders["content-type"]) {
-          const headerValidation = Convert.toPayWayHeaders(
-            JSON.stringify({
-              "Content-Type": responseHeaders["content-type"],
-            }),
-          )
-          console.log("✅ PayWay response headers validated:", headerValidation)
+        clearTimeout(timeoutId)
+
+        console.log("=== PayWay Purchase API Response ===")
+        console.log("Status:", response.status)
+        console.log("Content-Type:", response.headers.get("content-type"))
+
+        try {
+          const responseHeaders: Record<string, string> = {}
+          response.headers.forEach((value, key) => {
+            responseHeaders[key] = value
+          })
+
+          // Validate Content-Type header if present
+          if (responseHeaders["content-type"]) {
+            const headerValidation = Convert.toPayWayHeaders(
+              JSON.stringify({
+                "Content-Type": responseHeaders["content-type"],
+              }),
+            )
+            console.log("✅ PayWay response headers validated:", headerValidation)
+          }
+        } catch (headerError) {
+          console.warn("⚠️ PayWay response header validation failed:", headerError)
+          // Continue processing - header validation is not critical for functionality
         }
-      } catch (headerError) {
-        console.warn("⚠️ PayWay response header validation failed:", headerError)
-        // Continue processing - header validation is not critical for functionality
-      }
 
-      if (response.ok) {
-        const contentType = response.headers.get("content-type")
+        if (response.status === 520 || response.status === 502 || response.status === 503) {
+          const errorText = await response.text()
+          console.error(`❌ PayWay Server Error (${response.status}):`, errorText.substring(0, 500))
 
-        if (contentType?.includes("application/json")) {
-          const result = await response.json()
-          console.log("✅ PayWay JSON Response:", result)
+          // If this is a deeplink request and we've tried once, fall back to regular abapay_khqr
+          if (paymentOption === "abapay_khqr_deeplink" && attempt === 1) {
+            console.log("⚠️ Deeplink failed with 520 error, will retry with regular abapay_khqr on next attempt")
+            lastError = new Error(`PayWay Server Error: ${response.status} - Server temporarily unavailable`)
 
-          const statusCode = result.status?.code
-          const statusMessage = result.status?.message || getPayWayStatusMessage(statusCode)
+            // Update payment_option for next attempt
+            formData.set("payment_option", "abapay_khqr")
+            formData.set("view_type", "")
 
-          if (isPayWaySuccess(statusCode)) {
-            return {
-              success: true,
-              response_type: "json",
-              checkout_html: null,
-              checkout_url: result.checkout_qr_url || null,
-              checkout_qr_url: result.checkout_qr_url || null,
-              transaction_ref: result.status.tran_id || tran_id,
-              qr_string: result.qr_string || null,
-              abapay_deeplink: result.abapay_deeplink || null,
-              status: {
-                code: statusCode,
-                message: statusMessage,
-                tran_id: result.status.tran_id || tran_id,
-              },
+            // Regenerate hash with new payment_option
+            const newHashString =
+              req_time +
+              merchant_id +
+              tran_id +
+              amount +
+              items +
+              shipping +
+              firstname +
+              lastname +
+              email +
+              phone +
+              type +
+              "abapay_khqr" + // Changed payment option
+              return_url +
+              cancel_url +
+              continue_success_url +
+              return_deeplink +
+              currency +
+              custom_fields +
+              return_params +
+              payout +
+              lifetime +
+              additional_params +
+              google_pay_token +
+              skip_success_page
+
+            const newHash = crypto
+              .createHmac("sha512", process.env.PAYWAY_API_KEY!.trim())
+              .update(newHashString)
+              .digest("base64")
+            formData.set("hash", newHash)
+
+            console.log("🔄 Retrying with payment_option: abapay_khqr")
+            continue // Retry with fallback
+          }
+
+          throw new Error(`PayWay Server Error: ${response.status} - ${response.statusText}`)
+        }
+
+        if (response.ok) {
+          const contentType = response.headers.get("content-type")
+
+          if (contentType?.includes("application/json")) {
+            const result = await response.json()
+            console.log("✅ PayWay JSON Response:", result)
+
+            const statusCode = result.status?.code
+            const statusMessage = result.status?.message || getPayWayStatusMessage(statusCode)
+
+            if (isPayWaySuccess(statusCode)) {
+              return {
+                success: true,
+                response_type: "json",
+                checkout_html: null,
+                checkout_url: result.checkout_qr_url || null,
+                checkout_qr_url: result.checkout_qr_url || null,
+                transaction_ref: result.status.tran_id || tran_id,
+                qr_string: result.qr_string || null,
+                abapay_deeplink: result.abapay_deeplink || null,
+                status: {
+                  code: statusCode,
+                  message: statusMessage,
+                  tran_id: result.status.tran_id || tran_id,
+                },
+              }
+            } else {
+              const error = new Error(`PayWay Error: ${statusMessage} (Code: ${statusCode})`)
+              ;(error as any).code = statusCode
+              ;(error as any).retryable = isRetryableError(statusCode)
+              throw error
             }
           } else {
-            const error = new Error(`PayWay Error: ${statusMessage} (Code: ${statusCode})`)
-            ;(error as any).code = statusCode
-            ;(error as any).retryable = isRetryableError(statusCode)
-            throw error
-          }
-        } else {
-          // HTML response - checkout form
-          const htmlContent = await response.text()
-          console.log("HTML Response length:", htmlContent.length)
-          console.log("HTML Response preview:", htmlContent.substring(0, 500))
+            // HTML response - checkout form
+            const htmlContent = await response.text()
+            console.log("HTML Response length:", htmlContent.length)
+            console.log("HTML Response preview:", htmlContent.substring(0, 500))
 
-          // Validate that we received actual HTML content
-          if (!htmlContent || htmlContent.trim().length === 0) {
-            throw new Error("PayWay returned empty HTML content")
-          }
-
-          // Check if content looks like HTML
-          const isValidHtml =
-            htmlContent.includes("<html") || htmlContent.includes("<body") || htmlContent.includes("<form")
-          if (!isValidHtml) {
-            console.error("❌ PayWay returned non-HTML content:", htmlContent.substring(0, 200))
-            throw new Error("PayWay returned invalid HTML content")
-          }
-
-          // Check for error indicators in HTML
-          const errorIndicators = [
-            "error occurred",
-            "invalid request",
-            "authentication failed",
-            "merchant not found",
-            "hash mismatch",
-            "wrong hash",
-            "invalid hash",
-            "access denied",
-            "unauthorized",
-            "forbidden",
-            "bad request",
-            "internal server error",
-          ]
-
-          const hasError = errorIndicators.some((indicator) => htmlContent.toLowerCase().includes(indicator))
-
-          if (hasError) {
-            // Extract error message from HTML
-            const titleMatch = htmlContent.match(/<title>(.*?)<\/title>/i)
-            const h1Match = htmlContent.match(/<h1[^>]*>(.*?)<\/h1>/i)
-            const errorMatch = htmlContent.match(/error[:\s]*([^<\n]+)/i)
-
-            const errorMessage = titleMatch?.[1] || h1Match?.[1] || errorMatch?.[1] || "Unknown PayWay error"
-
-            console.error("❌ PayWay HTML Error:", errorMessage)
-            throw new Error(`PayWay Error: ${errorMessage.trim()}`)
-          }
-
-          // Check for valid checkout form
-          const checkoutIndicators = ["checkout", "payment", "payway", "<form", "<input", "submit"]
-          const isCheckoutForm = checkoutIndicators.some((indicator) => htmlContent.toLowerCase().includes(indicator))
-
-          if (isCheckoutForm) {
-            console.log("✅ PayWay HTML checkout form received - preparing for iframe display")
-
-            let processedHtml = htmlContent
-
-            // Ensure proper DOCTYPE and HTML structure for iframe
-            if (!processedHtml.includes("<!DOCTYPE")) {
-              processedHtml = "<!DOCTYPE html>\n" + processedHtml
+            // Validate that we received actual HTML content
+            if (!htmlContent || htmlContent.trim().length === 0) {
+              throw new Error("PayWay returned empty HTML content")
             }
 
-            // Add viewport meta tag for mobile compatibility if not present
-            if (!processedHtml.includes("viewport")) {
+            // Check if content looks like HTML
+            const isValidHtml =
+              htmlContent.includes("<html") || htmlContent.includes("<body") || htmlContent.includes("<form")
+            if (!isValidHtml) {
+              console.error("❌ PayWay returned non-HTML content:", htmlContent.substring(0, 200))
+              throw new Error("PayWay returned invalid HTML content")
+            }
+
+            // Check for error indicators in HTML
+            const errorIndicators = [
+              "error occurred",
+              "invalid request",
+              "authentication failed",
+              "merchant not found",
+              "hash mismatch",
+              "wrong hash",
+              "invalid hash",
+              "access denied",
+              "unauthorized",
+              "forbidden",
+              "bad request",
+              "internal server error",
+            ]
+
+            const hasError = errorIndicators.some((indicator) => htmlContent.toLowerCase().includes(indicator))
+
+            if (hasError) {
+              // Extract error message from HTML
+              const titleMatch = htmlContent.match(/<title>(.*?)<\/title>/i)
+              const h1Match = htmlContent.match(/<h1[^>]*>(.*?)<\/h1>/i)
+              const errorMatch = htmlContent.match(/error[:\s]*([^<\n]+)/i)
+
+              const errorMessage = titleMatch?.[1] || h1Match?.[1] || errorMatch?.[1] || "Unknown PayWay error"
+
+              console.error("❌ PayWay HTML Error:", errorMessage)
+              throw new Error(`PayWay Error: ${errorMessage.trim()}`)
+            }
+
+            // Check for valid checkout form
+            const checkoutIndicators = ["checkout", "payment", "payway", "<form", "<input", "submit"]
+            const isCheckoutForm = checkoutIndicators.some((indicator) => htmlContent.toLowerCase().includes(indicator))
+
+            if (isCheckoutForm) {
+              console.log("✅ PayWay HTML checkout form received - preparing for iframe display")
+
+              let processedHtml = htmlContent
+
+              const paywayBaseUrl = "https://checkout-sandbox.payway.com.kh"
+
+              // Fix Nuxt.js asset paths (CSS and JS files)
+              processedHtml = processedHtml.replace(/href=["'](\/_nuxt\/[^"']+)["']/gi, `href="${paywayBaseUrl}$1"`)
+              processedHtml = processedHtml.replace(/src=["'](\/_nuxt\/[^"']+)["']/gi, `src="${paywayBaseUrl}$1"`)
+
+              // Fix other relative asset paths (images, fonts, etc.)
               processedHtml = processedHtml.replace(
-                /<head>/i,
-                '<head>\n<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+                /href=["'](\/[^"']+\.(css|woff|woff2|ttf|eot))["']/gi,
+                `href="${paywayBaseUrl}$1"`,
               )
-            }
+              processedHtml = processedHtml.replace(
+                /src=["'](\/[^"']+\.(js|png|jpg|jpeg|gif|svg|webp))["']/gi,
+                `src="${paywayBaseUrl}$1"`,
+              )
 
-            // Add iframe-friendly styling if not present
-            if (!processedHtml.includes("iframe-friendly")) {
-              const iframeStyling = `
+              // Fix background images in inline styles
+              processedHtml = processedHtml.replace(/url$$["']?(\/[^"')]+)["']?$$/gi, `url("${paywayBaseUrl}$1")`)
+
+              console.log("[v0] Converted relative URLs to absolute URLs for PayWay assets")
+
+              // Remove integrity attributes from link tags (CSS)
+              processedHtml = processedHtml.replace(/<link([^>]*)\sintegrity=["'][^"']*["']([^>]*)>/gi, "<link$1$2>")
+
+              // Remove integrity attributes from script tags (JS)
+              processedHtml = processedHtml.replace(
+                /<script([^>]*)\sintegrity=["'][^"']*["']([^>]*)>/gi,
+                "<script$1$2>",
+              )
+
+              // Remove crossorigin attributes from link tags
+              processedHtml = processedHtml.replace(/<link([^>]*)\scrossorigin=["'][^"']*["']([^>]*)>/gi, "<link$1$2>")
+              processedHtml = processedHtml.replace(/<link([^>]*)\scrossorigin([^>]*)>/gi, "<link$1$2>")
+
+              // Remove crossorigin attributes from script tags
+              processedHtml = processedHtml.replace(
+                /<script([^>]*)\scrossorigin=["'][^"']*["']([^>]*)>/gi,
+                "<script$1$2>",
+              )
+              processedHtml = processedHtml.replace(/<script([^>]*)\scrossorigin([^>]*)>/gi, "<script$1$2>")
+
+              console.log("[v0] Removed integrity and crossorigin attributes to bypass CORS checks")
+
+              // Ensure proper DOCTYPE and HTML structure for iframe
+              if (!processedHtml.includes("<!DOCTYPE")) {
+                processedHtml = "<!DOCTYPE html>\n" + processedHtml
+              }
+
+              // Add viewport meta tag for mobile compatibility if not present
+              if (!processedHtml.includes("viewport")) {
+                processedHtml = processedHtml.replace(
+                  /<head>/i,
+                  '<head>\n<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+                )
+              }
+
+              // Add iframe-friendly styling if not present
+              if (!processedHtml.includes("iframe-friendly")) {
+                const iframeStyling = `
                 <style id="iframe-friendly">
                   body { 
                     margin: 0; 
@@ -511,32 +618,112 @@ export const payway = {
                   }
                 </style>
               `
-              processedHtml = processedHtml.replace(/<\/head>/i, iframeStyling + "</head>")
-            }
-
-            // Add target="aba_webservice" to all forms for ABA PayWay integration
-            processedHtml = processedHtml.replace(/<form([^>]*)>/gi, (match, attributes) => {
-              // Check if target attribute already exists
-              if (attributes.includes("target=")) {
-                // Replace existing target with aba_webservice
-                return match.replace(/target\s*=\s*["'][^"']*["']/gi, 'target="aba_webservice"')
-              } else {
-                // Add target attribute
-                return `<form${attributes} target="aba_webservice">`
+                processedHtml = processedHtml.replace(/<\/head>/i, iframeStyling + "</head>")
               }
-            })
 
-            const abaPaywayScript = `
+              let extractedQrString = null
+              let extractedCheckoutUrl = null
+
+              // Try to extract QR data from __NUXT_DATA__ script tag
+              const nuxtDataMatch = htmlContent.match(/<script[^>]*id="__NUXT_DATA__"[^>]*>(.*?)<\/script>/)
+              if (nuxtDataMatch) {
+                try {
+                  const nuxtData = JSON.parse(nuxtDataMatch[1])
+                  console.log("[v0] Extracted NUXT data from HTML")
+
+                  // Parse the NUXT data structure to find qr_string
+                  if (Array.isArray(nuxtData)) {
+                    for (const item of nuxtData) {
+                      if (typeof item === "object" && item !== null) {
+                        if (item.qr_string) {
+                          extractedQrString = item.qr_string
+                          console.log("[v0] Found qr_string in NUXT data")
+                        }
+                        if (item.checkout_qr_url) {
+                          extractedCheckoutUrl = item.checkout_qr_url
+                          console.log("[v0] Found checkout_qr_url in NUXT data")
+                        }
+                      }
+                    }
+                  }
+                } catch (parseError) {
+                  console.warn("[v0] Failed to parse NUXT data:", parseError)
+                }
+              }
+
+              // Add target="aba_webservice" to all forms for ABA PayWay integration
+              processedHtml = processedHtml.replace(/<form([^>]*)>/gi, (match, attributes) => {
+                // Check if target attribute already exists
+                if (attributes.includes("target=")) {
+                  // Replace existing target with aba_webservice
+                  return match.replace(/target\s*=\s*["'][^"']*["']/gi, 'target="aba_webservice"')
+                } else {
+                  // Add target attribute
+                  return `<form${attributes} target="aba_webservice">`
+                }
+              })
+
+              const abaPaywayScript = `
               <script src="https://checkout.payway.com.kh/plugins/checkout2-0.js"></script>
               <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
               <script>
                 $(document).ready(function(){
+                  console.log('[PayWay HTML] Initializing ABA PayWay checkout for transaction: ${tran_id}');
+                  
+                  // Extract QR data from page
+                  const nuxtDataScript = document.getElementById('__NUXT_DATA__');
+                  if (nuxtDataScript) {
+                    try {
+                      const nuxtData = JSON.parse(nuxtDataScript.textContent);
+                      console.log('[PayWay HTML] NUXT data found:', nuxtData);
+                      
+                      // Search for qr_string and checkout_qr_url in the data structure
+                      function findInData(obj, key) {
+                        if (typeof obj !== 'object' || obj === null) return null;
+                        if (obj[key]) return obj[key];
+                        if (Array.isArray(obj)) {
+                          for (const item of obj) {
+                            const result = findInData(item, key);
+                            if (result) return result;
+                          }
+                        }
+                        for (const k in obj) {
+                          const result = findInData(obj[k], key);
+                          if (result) return result;
+                        }
+                        return null;
+                      }
+                      
+                      const qrString = findInData(nuxtData, 'qr_string');
+                      const checkoutQrUrl = findInData(nuxtData, 'checkout_qr_url');
+                      
+                      if (checkoutQrUrl) {
+                        console.log('[PayWay HTML] Found checkout_qr_url, sending to parent');
+                        // Send to parent window for popup display
+                        if (window.parent !== window) {
+                          window.parent.postMessage({
+                            type: 'CHECKOUT_QR_URL',
+                            data: {
+                              checkout_qr_url: checkoutQrUrl,
+                              qr_string: qrString,
+                              transaction_id: '${tran_id}'
+                            }
+                          }, '*');
+                        }
+                      }
+                    } catch (e) {
+                      console.error('[PayWay HTML] Failed to parse NUXT data:', e);
+                    }
+                  }
+                  
                   // Find checkout button (common selectors)
                   const checkoutButton = $('#checkout_button, .checkout-button, [type="submit"], button[name*="checkout"], input[value*="checkout"], input[value*="pay"]').first();
                   
                   if (checkoutButton.length) {
+                    console.log('[PayWay HTML] Checkout button found');
                     checkoutButton.click(function(e){
                       e.preventDefault();
+                      console.log('[PayWay HTML] Checkout button clicked');
                       
                       // Find the form and append payment options
                       const form = $(this).closest('form');
@@ -550,9 +737,10 @@ export const payway = {
                       
                       // Trigger ABA PayWay checkout
                       if (typeof AbaPayway !== 'undefined' && AbaPayway.checkout) {
+                        console.log('[PayWay HTML] Calling AbaPayway.checkout()');
                         AbaPayway.checkout();
                       } else {
-                        console.warn('AbaPayway.checkout not available, submitting form normally');
+                        console.warn('[PayWay HTML] AbaPayway.checkout not available, submitting form normally');
                         form.submit();
                       }
                     });
@@ -560,13 +748,18 @@ export const payway = {
                   
                   // Listen for checkout_qr_url response from ABA PayWay
                   window.addEventListener('message', function(event) {
+                    console.log('[PayWay HTML] Received message:', event.data);
+                    
                     if (event.data && event.data.checkout_qr_url) {
+                      console.log('[PayWay HTML] Checkout QR URL received from AbaPayway');
                       // Send QR URL to parent window for popup display
                       if (window.parent !== window) {
                         window.parent.postMessage({
-                          type: 'aba_payway_qr',
-                          checkout_qr_url: event.data.checkout_qr_url,
-                          transaction_id: event.data.transaction_id || '${tran_id}'
+                          type: 'CHECKOUT_QR_URL',
+                          data: {
+                            checkout_qr_url: event.data.checkout_qr_url,
+                            transaction_id: event.data.transaction_id || '${tran_id}'
+                          }
                         }, '*');
                       }
                     }
@@ -575,46 +768,68 @@ export const payway = {
               </script>
             `
 
-            // Insert ABA PayWay script before closing body tag
-            if (processedHtml.includes("</body>")) {
-              processedHtml = processedHtml.replace("</body>", abaPaywayScript + "</body>")
-            } else {
-              processedHtml += abaPaywayScript
-            }
+              // Insert ABA PayWay script before closing body tag
+              if (processedHtml.includes("</body>")) {
+                processedHtml = processedHtml.replace("</body>", abaPaywayScript + "</body>")
+              } else {
+                processedHtml += abaPaywayScript
+              }
 
-            return {
-              success: true,
-              response_type: "html",
-              checkout_html: processedHtml, // Return processed HTML
-              checkout_url: null,
-              checkout_qr_url: null,
-              transaction_ref: tran_id,
-              qr_string: null,
-              abapay_deeplink: null,
-              status: {
-                code: "00",
-                message: "Checkout form generated successfully",
-                tran_id,
-              },
+              return {
+                success: true,
+                response_type: "html",
+                checkout_html: processedHtml,
+                checkout_url: extractedCheckoutUrl,
+                checkout_qr_url: extractedCheckoutUrl,
+                transaction_ref: tran_id,
+                qr_string: extractedQrString,
+                abapay_deeplink: null,
+                status: {
+                  code: "00",
+                  message: "Checkout form generated successfully",
+                  tran_id,
+                },
+              }
+            } else {
+              console.error("❌ Unexpected HTML content - not a valid checkout form")
+              console.error("Content preview:", htmlContent.substring(0, 1000))
+              throw new Error("PayWay returned unexpected content - not a valid checkout form")
             }
-          } else {
-            console.error("❌ Unexpected HTML content - not a valid checkout form")
-            console.error("Content preview:", htmlContent.substring(0, 1000))
-            throw new Error("PayWay returned unexpected content - not a valid checkout form")
+          }
+        } else {
+          const errorText = await response.text()
+          console.error("❌ PayWay HTTP Error:")
+          console.error("Status:", response.status, response.statusText)
+          console.error("Response:", errorText.substring(0, 1000))
+
+          throw new Error(`PayWay HTTP Error: ${response.status} - ${response.statusText}`)
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          console.error("❌ PayWay request timeout after 30 seconds")
+          lastError = new Error("PayWay request timeout - please try again")
+
+          if (attempt < maxRetries) {
+            console.log(`🔄 Retrying... (${attempt + 1}/${maxRetries})`)
+            continue
           }
         }
-      } else {
-        const errorText = await response.text()
-        console.error("❌ PayWay HTTP Error:")
-        console.error("Status:", response.status, response.statusText)
-        console.error("Response:", errorText.substring(0, 1000))
 
-        throw new Error(`PayWay HTTP Error: ${response.status} - ${response.statusText}`)
+        console.error(`❌ PayWay Purchase API Integration Error (Attempt ${attempt}/${maxRetries}):`, error)
+        lastError = error as Error
+
+        // If we have more retries and this is a deeplink request, try fallback
+        if (attempt < maxRetries && paymentOption === "abapay_khqr_deeplink") {
+          console.log("🔄 Retrying with fallback...")
+          continue
+        }
+
+        // No more retries, throw the error
+        break
       }
-    } catch (error) {
-      console.error("❌ PayWay Purchase API Integration Error:", error)
-      throw error
     }
+
+    throw lastError || new Error("PayWay request failed after all retries")
   },
 
   createQRPayment: async function createQRPayment(
